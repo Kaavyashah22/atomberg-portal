@@ -1,0 +1,17 @@
+# Node
+node_modules/
+dist/
+.eslintcache
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# MacOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
