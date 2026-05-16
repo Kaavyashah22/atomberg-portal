@@ -5,6 +5,8 @@ import {
   Activity, Calendar
 } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
 const ManagerWorkspace = () => {
   const [xUserId, setXUserId] = useState(4); // Default to L1 Manager ID
   const [loading, setLoading] = useState(true);
@@ -50,7 +52,7 @@ const ManagerWorkspace = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchWithAuth(`http://127.0.0.1:8000/api/v1/manager/team`);
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/manager/team`);
       setTeamMembers(data || []);
     } catch (err) {
       setError("Failed to load team data: " + err.message);
@@ -73,7 +75,7 @@ const ManagerWorkspace = () => {
     setSelectedEmployee(emp);
     
     try {
-      const data = await fetchWithAuth(`http://127.0.0.1:8000/api/v1/manager/employee/${emp.id}/tracking`);
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/manager/employee/${emp.id}/tracking`);
       setEmployeeSheet(data.sheet);
       setEmployeeGoals(data.goals);
       setEmployeeTracking(data.tracking);
@@ -105,7 +107,7 @@ const ManagerWorkspace = () => {
         ...(edit.weightage && { weightage: Number(edit.weightage) })
       }));
       
-      await fetchWithAuth(`http://127.0.0.1:8000/api/v1/manager/review/${employeeSheet.id}`, {
+      await fetchWithAuth(`${API_BASE_URL}/api/v1/manager/review/${employeeSheet.id}`, {
         method: 'POST',
         body: JSON.stringify({
           status: actionStatus,
@@ -129,7 +131,7 @@ const ManagerWorkspace = () => {
     }
     
     try {
-      await fetchWithAuth(`http://127.0.0.1:8000/api/v1/tracking/manager/checkin`, {
+      await fetchWithAuth(`${API_BASE_URL}/api/v1/tracking/manager/checkin`, {
         method: 'POST',
         body: JSON.stringify({
           goal_id: goalId,

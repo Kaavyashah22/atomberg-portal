@@ -4,6 +4,8 @@ import {
   Unlock, Users, FileText, CheckCircle, Activity, UserCheck, Ghost
 } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
 const AdminDashboard = () => {
   const [xUserId, setXUserId] = useState(1);
   const [quarter, setQuarter] = useState('Q1');
@@ -52,16 +54,16 @@ const AdminDashboard = () => {
     try {
       if (activeTab === 'A') {
         const [compRes, mgrRes] = await Promise.all([
-          fetchWithAuth(`http://127.0.0.1:8000/api/v1/admin/dashboard/completion?current_quarter=${quarter || 'Q1'}`),
-          fetchWithAuth(`http://127.0.0.1:8000/api/v1/analytics/manager-effectiveness?current_quarter=${quarter || 'Q1'}`)
+          fetchWithAuth(`${API_BASE_URL}/api/v1/admin/dashboard/completion?current_quarter=${quarter || 'Q1'}`),
+          fetchWithAuth(`${API_BASE_URL}/api/v1/analytics/manager-effectiveness?current_quarter=${quarter || 'Q1'}`)
         ]);
         setCompletionData(compRes);
         setManagerEffectiveness(mgrRes || []);
       } else if (activeTab === 'B') {
-        const distRes = await fetchWithAuth(`http://127.0.0.1:8000/api/v1/analytics/goal-distribution?current_quarter=${quarter || 'Q1'}`);
+        const distRes = await fetchWithAuth(`${API_BASE_URL}/api/v1/analytics/goal-distribution?current_quarter=${quarter || 'Q1'}`);
         setGoalDistribution(distRes);
       } else if (activeTab === 'C') {
-        const logsRes = await fetchWithAuth(`http://127.0.0.1:8000/api/v1/admin/audit-logs?skip=0&limit=50`);
+        const logsRes = await fetchWithAuth(`${API_BASE_URL}/api/v1/admin/audit-logs?skip=0&limit=50`);
         setAuditLogs(logsRes);
       }
     } catch (err) {
@@ -77,7 +79,7 @@ const AdminDashboard = () => {
 
   const handleTriggerEscalation = async () => {
     try {
-      const res = await fetchWithAuth(`http://127.0.0.1:8000/api/v1/admin/escalations/trigger-check`, { method: 'POST' });
+      const res = await fetchWithAuth(`${API_BASE_URL}/api/v1/admin/escalations/trigger-check`, { method: 'POST' });
       showToast(`Escalation Check Success: ${res.report?.new_logs_generated} new logs generated`);
     } catch (err) {
       showToast(`Escalation Error: ${err.message}`);
@@ -87,7 +89,7 @@ const AdminDashboard = () => {
   const handleEmergencyUnlock = async () => {
     if (!unlockSheetId) return;
     try {
-      await fetchWithAuth(`http://127.0.0.1:8000/api/v1/admin/sheets/${unlockSheetId}/unlock`, { method: 'POST' });
+      await fetchWithAuth(`${API_BASE_URL}/api/v1/admin/sheets/${unlockSheetId}/unlock`, { method: 'POST' });
       showToast(`Sheet ${unlockSheetId} unlocked successfully`);
       setUnlockSheetId('');
     } catch (err) {

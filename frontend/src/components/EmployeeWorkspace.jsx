@@ -4,6 +4,8 @@ import {
   Target, ShieldAlert, FileText, Send, Trash2, Calendar
 } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
 const EmployeeWorkspace = () => {
   const [xUserId, setXUserId] = useState(14); // Default to Mock Employee
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,7 @@ const EmployeeWorkspace = () => {
     setError(null);
     try {
       // This hits the assumed endpoint for fetching the employee's active sheet
-      const data = await fetchWithAuth(`http://127.0.0.1:8000/api/v1/goals/sheet/active`);
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/goals/sheet/active`);
       setSheet(data.sheet);
       setGoals(data.goals || []);
       
@@ -119,7 +121,7 @@ const EmployeeWorkspace = () => {
 
     setValidationError('');
     try {
-      await fetchWithAuth(`http://127.0.0.1:8000/api/v1/goals/submit`, {
+      await fetchWithAuth(`${API_BASE_URL}/api/v1/goals/submit`, {
         method: 'POST',
         body: JSON.stringify({
           sheet_id: sheet.id,
@@ -269,7 +271,7 @@ const EmployeeWorkspace = () => {
   const handleSaveTracking = async (goalId) => {
     const data = trackingState[goalId]?.[selectedQuarter] || {};
     try {
-      await fetchWithAuth(`http://127.0.0.1:8000/api/v1/tracking/employee/update`, {
+      await fetchWithAuth(`${API_BASE_URL}/api/v1/tracking/employee/update`, {
         method: 'PUT',
         body: JSON.stringify({
           goal_id: goalId,

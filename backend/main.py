@@ -1,5 +1,6 @@
 import enum
 import json
+import os
 from datetime import date, datetime, timezone
 from typing import List, Optional
 
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 # Database Setup
 # ==========================================
 # In production, this would be loaded from environment variables
-DATABASE_URL = "postgresql+asyncpg://localhost/atomberg_goals"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost/atomberg_goals")
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(
     bind=engine, 
