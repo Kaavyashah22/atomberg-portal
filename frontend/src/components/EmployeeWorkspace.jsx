@@ -14,6 +14,7 @@ const EmployeeWorkspace = () => {
   
   // Workspace State
   const [sheet, setSheet] = useState(null);
+  const [cycleStatus, setCycleStatus] = useState(null);
   const [goals, setGoals] = useState([]);
   
   // View A specific state
@@ -51,6 +52,7 @@ const EmployeeWorkspace = () => {
       // This hits the assumed endpoint for fetching the employee's active sheet
       const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/goals/sheet/active`);
       setSheet(data.sheet);
+      setCycleStatus(data.cycle_status);
       setGoals(data.goals || []);
       
       // Pre-fill tracking state from fetched data if available
@@ -145,11 +147,13 @@ const EmployeeWorkspace = () => {
     }
   };
 
+  const isReadOnly = sheet && (sheet.status === 'Pending_Approval' || sheet.status === 'Approved');
+
   const renderGoalSettingMatrix = () => (
     <div className="space-y-6 animate-fade-in">
       {/* Dynamic Weightage Banner */}
       <div className={`p-4 rounded-xl flex items-center justify-between shadow-sm transition-colors duration-500 ${
-        totalWeightage === 100 ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'
+        totalWeightage === 100 ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'
       }`}>
         <div className="flex items-center gap-3">
           {totalWeightage === 100 ? <CheckCircle className="text-emerald-500" size={24}/> : <AlertTriangle className="text-amber-500" size={24}/>}
@@ -164,27 +168,42 @@ const EmployeeWorkspace = () => {
         </div>
         <div className="flex gap-4 items-center">
           <span className="text-sm font-semibold text-slate-400">{goals.length}/8 Goals Added</span>
+          {!isReadOnly && (
+            <button 
+              onClick={handleAddGoal} 
+              disabled={isMaxGoalsReached || (cycleStatus && !cycleStatus.can_edit_goals)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm ${
+                isMaxGoalsReached || (cycleStatus && !cycleStatus.can_edit_goals) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 text-white'
+              }`}
+            >
+              <Plus size={16}/> Add Goal Row
+            </button>
+          )}
           <button 
-            onClick={handleAddGoal} 
-            disabled={isMaxGoalsReached}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm ${
-              isMaxGoalsReached ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-900 text-white'
-            }`}
+            onClick={handleSubmitSheet}
+            disabled={isReadOnly || (cycleStatus && !cycleStatus.can_edit_goals)}
+            className={`px-5 py-2.5 rounded-lg text-sm font-bold flex items-center shadow-sm transition-colors
+              ${(isReadOnly || (cycleStatus && !cycleStatus.can_edit_goals)) ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
           >
-            <Plus size={16}/> Add Goal Row
+            <Send size={16} className="mr-2" />
+            {isReadOnly ? 'Submitted' : 'Submit for Approval'}
           </button>
         </div>
       </div>
 
-      {/* Validation Error Box */}
       {validationError && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-lg flex items-start gap-3 shadow-sm animate-fade-in">
-          <ShieldAlert size={20} className="mt-0.5 shrink-0" />
-          <p className="font-semibold text-sm">{validationError}</p>
+        <div className="mb-6 bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl flex items-center shadow-sm">
+          <AlertTriangle className="mr-3 flex-shrink-0" size={20} />
+          <span className="font-medium text-sm">{validationError}</span>
+        </div>
+      )}
+      {cycleStatus && cycleStatus.phase === "CLOSED" && (
+        <div className="mb-6 bg-amber-500/10 border border-amber-500/20 text-amber-500 p-4 rounded-xl flex items-center shadow-sm">
+          <Clock className="mr-3 flex-shrink-0" size={20} />
+          <span className="font-medium text-sm">Action windows are currently closed. Next tracking window opens in July/Oct/Jan/Mar.</span>
         </div>
       )}
 
-      {/* Goal Matrix Grid */}
       <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -203,13 +222,13 @@ const EmployeeWorkspace = () => {
               {goals.map((g, idx) => (
                 <tr key={g.id} className="hover:bg-slate-800/20 transition-colors group">
                   <td className="px-4 py-3">
-                    <input type="text" value={g.thrust_area} onChange={(e) => handleGoalChange(idx, 'thrust_area', e.target.value)} disabled={g.is_shared} placeholder="e.g. Financial" className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors" />
+                    <input type="text" value={g.thrust_area} onChange={(e) => handleGoalChange(idx, 'thrust_area', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
                   </td>
                   <td className="px-4 py-3">
-                    <input type="text" value={g.title} onChange={(e) => handleGoalChange(idx, 'title', e.target.value)} disabled={g.is_shared} placeholder="Title" className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors" />
+                    <input type="text" value={g.title} onChange={(e) => handleGoalChange(idx, 'title', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
                   </td>
                   <td className="px-4 py-3">
-                    <select value={g.uom} onChange={(e) => handleGoalChange(idx, 'uom', e.target.value)} disabled={g.is_shared} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                    <select value={g.uom} onChange={(e) => handleGoalChange(idx, 'uom', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5">
                       <option value="Numeric_Max">Numeric Max</option>
                       <option value="Numeric_Min">Numeric Min</option>
                       <option value="Timeline">Timeline</option>
@@ -217,16 +236,16 @@ const EmployeeWorkspace = () => {
                     </select>
                   </td>
                   <td className="px-4 py-3">
-                    <input type="number" value={g.target_value} onChange={(e) => handleGoalChange(idx, 'target_value', e.target.value)} disabled={g.is_shared || g.uom === 'Zero_Based'} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors" />
+                    <input type="number" value={g.target_value} onChange={(e) => handleGoalChange(idx, 'target_value', e.target.value)} disabled={g.is_shared || g.uom === 'Zero_Based' || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
                   </td>
                   <td className="px-4 py-3">
-                    <input type="number" value={g.weightage} onChange={(e) => handleGoalChange(idx, 'weightage', e.target.value)} className={`w-full text-sm border-slate-700 rounded-md bg-slate-800/50 text-white p-2 border focus:ring-indigo-500 ${Number(g.weightage) < 10 ? 'border-amber-300 bg-amber-50' : ''}`} />
+                    <input type="number" value={g.weightage} onChange={(e) => handleGoalChange(idx, 'weightage', e.target.value)} disabled={isReadOnly} className="w-full text-sm border-slate-700 rounded-md bg-slate-800/50 text-white p-2 border" />
                   </td>
                   <td className="px-4 py-3">
-                    <input type="date" value={g.deadline} onChange={(e) => handleGoalChange(idx, 'deadline', e.target.value)} disabled={g.is_shared} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors" />
+                    <input type="date" value={g.deadline} onChange={(e) => handleGoalChange(idx, 'deadline', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {!g.is_shared && (
+                    {!g.is_shared && !isReadOnly && (
                       <button onClick={() => handleDeleteGoal(idx)} className="text-slate-400 hover:text-rose-500 transition-colors p-1.5 opacity-0 group-hover:opacity-100">
                         <Trash2 size={18} />
                       </button>
@@ -234,27 +253,13 @@ const EmployeeWorkspace = () => {
                   </td>
                 </tr>
               ))}
-              {goals.length === 0 && (
-                <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-400 italic">No goals added yet. Start building your performance matrix.</td></tr>
-              )}
             </tbody>
           </table>
-        </div>
-        <div className="bg-slate-800/30 border-t border-white/10 px-6 py-4 flex justify-end">
-          <button 
-            onClick={handleSubmitSheet}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center gap-2"
-          >
-            <Send size={16} /> Submit Goal Sheet
-          </button>
         </div>
       </div>
     </div>
   );
 
-  // ==========================================
-  // VIEW B: Quarterly Tracking Update Logger
-  // ==========================================
   const handleTrackingChange = (goalId, field, value) => {
     setTrackingState(prev => ({
       ...prev,
@@ -291,93 +296,86 @@ const EmployeeWorkspace = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-6 shadow-md border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-black leading-relaxed tracking-tight text-white flex items-center gap-2"><Target className="text-indigo-400" /> Quarterly Tracking Logger</h2>
-          <p className="text-sm text-slate-300 mt-1">Log your execution metrics. Your sheet is currently locked and approved.</p>
+          <h2 className="text-xl font-black text-white flex items-center gap-2"><Target className="text-indigo-400" /> Quarterly Tracking Logger</h2>
         </div>
-        <div className="flex items-center gap-3 bg-slate-800/50 p-2 rounded-lg border border-slate-600">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-400 pl-2">Active Quarter</label>
+        <div className="flex items-center gap-3">
           <select 
             value={selectedQuarter} 
             onChange={(e) => setSelectedQuarter(e.target.value)}
-            className="bg-indigo-600 border-none rounded-md py-1.5 pl-3 pr-8 text-sm font-bold text-white focus:ring-0 cursor-pointer shadow-sm"
+            className="bg-indigo-600 border-none rounded-md py-1.5 pl-3 pr-8 text-sm font-bold text-white cursor-pointer"
           >
-            <option value="Q1">Q1</option>
-            <option value="Q2">Q2</option>
-            <option value="Q3">Q3</option>
-            <option value="Q4">Q4</option>
+            <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
           </select>
         </div>
       </div>
+
+      {cycleStatus && cycleStatus.phase === "GOAL_SETTING" && (
+        <div className="mb-6 bg-amber-500/10 border border-amber-500/20 text-amber-500 p-4 rounded-xl flex items-center shadow-sm">
+          <Clock className="mr-3 flex-shrink-0" size={20} />
+          <span className="font-medium text-sm">Tracking updates are currently closed. The Q1 Tracking window opens in July.</span>
+        </div>
+      )}
 
       <div className="space-y-4">
         {goals.map(g => {
           const tState = trackingState[g.id]?.[selectedQuarter] || {};
           const isZeroBased = g.uom === 'Zero_Based';
+          const isLogLocked = cycleStatus && !cycleStatus.can_update_tracking;
           
           return (
-            <div key={g.id} className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden hover:shadow-md transition-shadow">
-              <div className="bg-slate-800/20 border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <span className="bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-md text-xs font-bold mr-3">{g.thrust_area}</span>
-                  <span className="font-bold text-white">{g.title}</span>
-                </div>
-                <div className="flex gap-4 text-sm font-medium text-slate-300">
-                  <span>Weight: <span className="text-slate-900 font-bold">{g.weightage}%</span></span>
-                  <span>Target: <span className="text-indigo-600 font-bold">{isZeroBased ? '0 (Zero Based)' : g.target_value}</span></span>
-                </div>
+            <div key={g.id} className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
+              <div className="bg-slate-800/20 border-b border-white/10 px-6 py-4">
+                <span className="font-bold text-white">{g.title}</span>
               </div>
-              <div className="p-6 bg-slate-900/50 backdrop-blur-sm border-white/10">
+              <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                   {!isZeroBased ? (
                     <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Actual Achievement</label>
+                      <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Actual Achievement</label>
                       <input 
                         type="number" 
                         value={tState.actual_achievement || ''} 
                         onChange={(e) => handleTrackingChange(g.id, 'actual_achievement', e.target.value)}
-                        placeholder="Enter metric"
-                        className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        disabled={isLogLocked}
+                        className="w-full bg-slate-900 border border-slate-700 text-white text-sm rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
                   ) : (
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Metric Not Required</label>
-                      <div className="w-full text-sm bg-slate-800/20 text-slate-400 rounded-lg p-2.5 border border-slate-200 italic">Zero Based Goal</div>
-                    </div>
+                    <div className="text-slate-400 italic text-sm">Zero Based Goal</div>
                   )}
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Progress Status</label>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Progress Status</label>
                     <select 
                       value={tState.status || 'Not Started'} 
                       onChange={(e) => handleTrackingChange(g.id, 'status', e.target.value)}
-                      className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      disabled={isLogLocked}
+                      className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5"
                     >
-                      <option value="Not Started">Not Started</option>
-                      <option value="On Track">On Track</option>
-                      <option value="Completed">Completed</option>
+                      <option value="Not Started">Not Started</option><option value="On Track">On Track</option><option value="Completed">Completed</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Completion Date</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
-                      <input 
-                        type="date" 
-                        value={tState.completion_date || ''} 
-                        onChange={(e) => handleTrackingChange(g.id, 'completion_date', e.target.value)}
-                        className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 pl-10 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      />
-                    </div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Completion Date</label>
+                    <input 
+                      type="date" 
+                      value={tState.completion_date || ''} 
+                      onChange={(e) => handleTrackingChange(g.id, 'completion_date', e.target.value)}
+                      disabled={isLogLocked}
+                      className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5"
+                    />
                   </div>
 
                   <div>
                     <button 
                       onClick={() => handleSaveTracking(g.id)}
-                      className="w-full bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2"
+                      disabled={isLogLocked}
+                      className={`w-full px-4 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 ${
+                        isLogLocked ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
                     >
-                      <Save size={16} /> Save Row
+                      <Save size={16} /> {isLogLocked ? 'Window Closed' : 'Save Row'}
                     </button>
                   </div>
                 </div>
@@ -426,7 +424,7 @@ const EmployeeWorkspace = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-slate-800/20 px-3 py-1.5 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-2 bg-slate-800/20 px-3 py-1.5 rounded-lg border border-white/10">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-400 hidden sm:block">Context</label>
               <select 
                 value={xUserId} 
@@ -458,7 +456,7 @@ const EmployeeWorkspace = () => {
         )}
 
         {!sheet ? (
-          <div className="bg-slate-900/50 backdrop-blur-sm border-white/10 p-12 rounded-xl border border-slate-200 text-center shadow-sm">
+          <div className="bg-slate-900/50 backdrop-blur-sm p-12 rounded-xl border border-white/10 text-center shadow-sm">
             <FileText size={48} className="mx-auto text-slate-300 mb-4" />
             <h3 className="text-xl font-bold text-slate-200">No Active Goal Sheet</h3>
             <p className="text-slate-400 mt-2">You do not currently have a goal sheet assigned for this cycle.</p>

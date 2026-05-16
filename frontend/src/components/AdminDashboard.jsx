@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   LayoutDashboard, BarChart2, ShieldAlert, RefreshCw, 
-  Unlock, Users, FileText, CheckCircle, Activity, UserCheck, Ghost
+  Unlock, Users, FileText, CheckCircle, Activity, UserCheck, Ghost, Target
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -26,6 +26,16 @@ const AdminDashboard = () => {
   const [auditLogs, setAuditLogs] = useState([]);
   const [unlockSheetId, setUnlockSheetId] = useState('');
   const [expandedLog, setExpandedLog] = useState(null);
+  
+  // Shared Goal Data
+  const [sharedGoal, setSharedGoal] = useState({
+    department: 'Sales',
+    title: '',
+    target_value: 0,
+    uom: 'Percentage',
+    weightage: 10,
+    cycle_year: 2026
+  });
 
   const showToast = (message) => {
     setToastMessage(message);
@@ -72,6 +82,40 @@ const AdminDashboard = () => {
       setLoading(false);
     }
   }, [activeTab, quarter, xUserId]);
+
+  const handlePushSharedGoal = async () => {
+    if (!sharedGoal.title) return;
+    try {
+      await fetchWithAuth(`${API_BASE_URL}/api/v1/admin/goals/shared`, {
+        method: 'POST',
+        body: JSON.stringify(sharedGoal)
+      });
+      showToast(`Shared goal pushed to ${sharedGoal.department} successfully!`);
+      setSharedGoal({ ...sharedGoal, title: '', target_value: 0 }); 
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/admin/export`, {
+        headers: { 'X-User-ID': String(xUserId) }
+      });
+      if (!response.ok) throw new Error("Export failed");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'atomberg_progress_export.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -279,7 +323,7 @@ const AdminDashboard = () => {
                   {goalDistribution.by_uom_and_status?.map((item, idx) => {
                     const statusColor = item.status === 'Completed' ? 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-emerald-100' :
                                       item.status === 'On Track' ? 'bg-blue-50 text-blue-800 border-blue-200 shadow-blue-100' :
-                                      'bg-slate-800/20 text-white border-slate-200 shadow-slate-100';
+                                      'bg-slate-800/20 text-white border-white/10 shadow-none';
                     return (
                       <div key={idx} className={`p-5 rounded-xl border shadow-sm ${statusColor} flex flex-col items-center justify-center text-center transition-transform hover:-translate-y-1 duration-300`}>
                         <span className="text-3xl font-black mb-1">{item.count}</span>
@@ -341,6 +385,66 @@ const AdminDashboard = () => {
                 className="bg-amber-500 hover:bg-amber-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm"
               >
                 Force Unlock
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Shared Goals Push Section */}
+        <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden p-6">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold leading-relaxed text-white flex items-center">
+              <Target className="mr-2 text-blue-500" size={20} /> Departmental Shared Goals Push
+            </h3>
+            <p className="text-sm text-slate-400 mt-1">Broadcast a top-down goal to all employees in a department.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 items-end">
+            <div className="col-span-1">
+              <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Dept</label>
+              <select 
+                value={sharedGoal.department}
+                onChange={(e) => setSharedGoal({...sharedGoal, department: e.target.value})}
+                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Sales">Sales</option>
+                <option value="Engineering">Engineering</option>
+                <option value="HR">HR</option>
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Goal Title</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Achieve $1M Revenue"
+                value={sharedGoal.title}
+                onChange={(e) => setSharedGoal({...sharedGoal, title: e.target.value})}
+                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Target</label>
+              <input 
+                type="number" 
+                value={sharedGoal.target_value}
+                onChange={(e) => setSharedGoal({...sharedGoal, target_value: Number(e.target.value)})}
+                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">Weight %</label>
+              <input 
+                type="number" 
+                value={sharedGoal.weightage}
+                onChange={(e) => setSharedGoal({...sharedGoal, weightage: Number(e.target.value)})}
+                className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="col-span-1">
+              <button 
+                onClick={handlePushSharedGoal}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-bold transition-colors shadow-md"
+              >
+                Push Goal
               </button>
             </div>
           </div>
@@ -435,22 +539,19 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Global Navbar Header */}
-      <header className="bg-transparent border-b border-white/10 relative z-30 mb-6 pt-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* Controls Bar */}
+      <div className="border-b border-white/10 mb-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="bg-gradient-to-br from-indigo-600 to-blue-600 p-2 rounded-xl text-white shadow-sm">
-              <LayoutDashboard size={20} />
+              <LayoutDashboard size={18} />
             </div>
-            <h1 className="text-xl md:text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-blue-600 hidden sm:block">
-              Atomberg Performance Portal
-            </h1>
-            <h1 className="text-xl font-black leading-relaxed tracking-tight text-indigo-700 sm:hidden">APP</h1>
+            <span className="text-sm font-black text-slate-300 uppercase tracking-wider hidden sm:block">Admin Console</span>
           </div>
           
-          <div className="flex items-center gap-3 sm:gap-6">
-            <div className="flex items-center gap-2 bg-slate-800/20 px-3 py-1.5 rounded-lg border border-slate-200">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 hidden sm:block">Persona</label>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-lg border border-white/10">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 hidden sm:block">Persona</label>
               <select 
                 value={xUserId} 
                 onChange={(e) => setXUserId(Number(e.target.value))}
@@ -462,12 +563,12 @@ const AdminDashboard = () => {
               </select>
             </div>
             
-            <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+            <div className="flex items-center gap-2 bg-indigo-600/10 px-3 py-1.5 rounded-lg border border-indigo-500/20">
               <label className="text-xs font-bold uppercase tracking-wider text-indigo-400 hidden sm:block">Quarter</label>
               <select 
                 value={quarter} 
                 onChange={(e) => setQuarter(e.target.value)}
-                className="bg-transparent text-indigo-700 border-none py-1 pl-1 pr-6 text-sm font-black focus:ring-0 cursor-pointer"
+                className="bg-transparent text-indigo-300 border-none py-1 pl-1 pr-6 text-sm font-black focus:ring-0 cursor-pointer"
               >
                 <option value="Q1">Q1 Tracker</option>
                 <option value="Q2">Q2 Tracker</option>
@@ -475,9 +576,16 @@ const AdminDashboard = () => {
                 <option value="Q4">Q4 Tracker</option>
               </select>
             </div>
+            
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+            >
+              <FileText size={14} /> Export CSV
+            </button>
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 mt-12">
         {/* API Error Banner */}

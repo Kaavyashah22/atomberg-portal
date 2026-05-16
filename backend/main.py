@@ -1,12 +1,14 @@
 import enum
 import json
 import os
+import io
+import csv
 from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request, Header, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import Column, Integer, String, Boolean, Float, ForeignKey, Enum as SQLEnum, select, Date, DateTime, UniqueConstraint, func
@@ -580,9 +582,18 @@ async def log_governance_action(db: AsyncSession, goal_id: Optional[int], sheet_
     db.add(audit_log)
 
 # ==========================================
+# ==========================================
 # API Routes
 # ==========================================
 from sqlalchemy.orm import selectinload
+
+def get_cycle_status():
+    month = datetime.now(timezone.utc).month
+    if month == 5:
+        return {"phase": "GOAL_SETTING", "can_edit_goals": True, "can_update_tracking": False}
+    elif month in [7, 10, 1, 3]:
+        return {"phase": "TRACKING", "can_edit_goals": False, "can_update_tracking": True}
+    return {"phase": "CLOSED", "can_edit_goals": False, "can_update_tracking": False}
 
 @app.get("/api/v1/goals/sheet/active")
 async def get_active_goal_sheet(
@@ -620,6 +631,7 @@ async def get_active_goal_sheet(
                     "status": sheet.status,
                     "is_locked": sheet.is_locked
                 },
+                "cycle_status": get_cycle_status(),
                 "goals": []
             }
             
@@ -635,6 +647,7 @@ async def get_active_goal_sheet(
                 "status": sheet.status,
                 "is_locked": sheet.is_locked
             },
+            "cycle_status": get_cycle_status(),
             "goals": [
                 {
                     "id": g.id,
@@ -711,9 +724,20 @@ async def submit_goal_sheet(
                 )
                 db.add(new_goal)
                 
+        # Log employee resubmission if coming from Rework
+        if sheet.status == GoalSheetStatus.Rework:
+            await log_governance_action(
+                db=db,
+                goal_id=None,
+                sheet_id=sheet.id,
+                modified_by=current_user.id,
+                action="EMPLOYEE_RESUBMISSION",
+                old_values={"status": sheet.status.value},
+                new_values={"status": GoalSheetStatus.Pending_Approval.value}
+            )
+            
         # Update sheet status to pending approval
         sheet.status = GoalSheetStatus.Pending_Approval
-        
         # Calculate total weightage for notification
         total_weight = sum(g.weightage for g in payload.goals)
         
@@ -810,6 +834,7 @@ async def get_employee_tracking(
                 "status": sheet.status,
                 "is_locked": sheet.is_locked
             },
+            "cycle_status": get_cycle_status(),
             "goals": [
                 {
                     "id": g.id,
@@ -879,13 +904,40 @@ async def manager_review(
                         detail=f"Goal ID {edit.goal_id} not found in this sheet."
                     )
                 
-                if edit.target_value is not None:
+                old_values = {}
+                new_values = {}
+                if edit.target_value is not None and goal.target_value != edit.target_value:
+                    old_values["target_value"] = goal.target_value
+                    new_values["target_value"] = edit.target_value
                     goal.target_value = edit.target_value
-                if edit.weightage is not None:
+                if edit.weightage is not None and goal.weightage != edit.weightage:
+                    old_values["weightage"] = goal.weightage
+                    new_values["weightage"] = edit.weightage
                     goal.weightage = edit.weightage
                     
+                if old_values:
+                    await log_governance_action(
+                        db=db,
+                        goal_id=goal.id,
+                        sheet_id=sheet.id,
+                        modified_by=current_user.id,
+                        action="MANAGER_INLINE_EDIT",
+                        old_values=old_values,
+                        new_values=new_values
+                    )
+                    
         # Update the overall sheet status
-        sheet.status = payload.status
+        if sheet.status != payload.status:
+            await log_governance_action(
+                db=db,
+                goal_id=None,
+                sheet_id=sheet.id,
+                modified_by=current_user.id,
+                action="MANAGER_STATUS_UPDATE",
+                old_values={"status": sheet.status.value},
+                new_values={"status": payload.status.value}
+            )
+            sheet.status = payload.status
         
         # Lock the sheet upon approval
         if payload.status == GoalSheetStatus.Approved:
@@ -1505,6 +1557,73 @@ async def get_goal_distribution(
         "by_thrust_area": by_thrust_area,
         "by_uom_and_status": by_uom_and_status
     }
+
+@app.get("/api/v1/admin/export")
+async def export_employee_progress(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_role(["Admin"]))
+):
+    query = (
+        select(
+            User.name.label("employee_name"),
+            User.department.label("department"),
+            User.email.label("email"),
+            GoalSheet.cycle_year,
+            Goal.thrust_area,
+            Goal.title,
+            Goal.target_value,
+            Goal.uom,
+            Goal.weightage,
+            QuarterlyTracking.quarter,
+            QuarterlyTracking.actual_achievement,
+            QuarterlyTracking.status,
+            QuarterlyTracking.completion_date,
+            QuarterlyTracking.manager_comment
+        )
+        .select_from(User)
+        .join(GoalSheet, GoalSheet.user_id == User.id)
+        .join(Goal, Goal.sheet_id == GoalSheet.id)
+        .outerjoin(QuarterlyTracking, QuarterlyTracking.goal_id == Goal.id)
+        .order_by(User.name, Goal.title, QuarterlyTracking.quarter)
+    )
+    
+    res = await db.execute(query)
+    rows = res.all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Employee Name", "Department", "Email", "Cycle Year",
+        "Thrust Area", "Goal Title", "Target Value", "UOM", "Weightage",
+        "Quarter", "Actual Achievement", "Status", "Completion Date", "Manager Comment"
+    ])
+    
+    for row in rows:
+        writer.writerow([
+            row.employee_name,
+            row.department,
+            row.email,
+            row.cycle_year,
+            row.thrust_area,
+            row.title,
+            row.target_value,
+            row.uom.value if row.uom else "",
+            row.weightage,
+            row.quarter.value if row.quarter else "",
+            row.actual_achievement,
+            row.status.value if row.status else "",
+            row.completion_date,
+            row.manager_comment
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=atomberg_progress_export.csv"}
+    )
+
 
 @app.get("/api/v1/analytics/manager-effectiveness")
 async def get_manager_effectiveness(

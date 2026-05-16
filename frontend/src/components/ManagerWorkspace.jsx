@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, CheckCircle, FileText, AlertTriangle, ChevronRight, 
   Target, BarChart2, MessageSquare, Save, UserCheck, ShieldCheck, ArrowLeft,
-  Activity, Calendar
+  Activity, Calendar, Clock
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -26,6 +26,7 @@ const ManagerWorkspace = () => {
   const [goalEdits, setGoalEdits] = useState({});
   const [managerComments, setManagerComments] = useState({});
   const [selectedQuarter, setSelectedQuarter] = useState('Q1');
+  const [cycleStatus, setCycleStatus] = useState(null);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -79,6 +80,7 @@ const ManagerWorkspace = () => {
       setEmployeeSheet(data.sheet);
       setEmployeeGoals(data.goals);
       setEmployeeTracking(data.tracking);
+      setCycleStatus(data.cycle_status);
       setGoalEdits({});
       setManagerComments({});
     } catch (err) {
@@ -198,9 +200,9 @@ const ManagerWorkspace = () => {
               <div 
                 key={member.id} 
                 onClick={() => handleSelectEmployee(member)}
-                className={`border rounded-2xl p-6 cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 ${
-                  member.status === 'Pending_Approval' ? 'border-indigo-300 bg-indigo-50/30' :
-                  member.status === 'Approved' ? 'border-emerald-200 bg-slate-900/50 backdrop-blur-sm border-white/10' : 'border-slate-200 bg-slate-50'
+                className={`rounded-2xl p-6 cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 bg-slate-900/50 backdrop-blur-sm ${
+                  member.status === 'Pending_Approval' ? 'border border-indigo-500/30 ring-1 ring-indigo-500/20' :
+                  member.status === 'Approved' ? 'border border-emerald-500/20' : 'border border-white/10'
                 }`}
               >
                 <div className="flex justify-between items-start mb-4">
@@ -211,7 +213,7 @@ const ManagerWorkspace = () => {
                   <ChevronRight className="text-slate-400" />
                 </div>
                 
-                <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                     member.status === 'Pending_Approval' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
                     member.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
@@ -250,7 +252,7 @@ const ManagerWorkspace = () => {
       </button>
 
       <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-200 bg-indigo-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="px-6 py-5 border-b border-white/10 bg-slate-800/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-black leading-relaxed tracking-tight text-white flex items-center gap-2">
               <FileText className="text-indigo-500" /> Goal Sheet Review: {selectedEmployee.name}
@@ -260,7 +262,7 @@ const ManagerWorkspace = () => {
           <div className="flex gap-3">
             <button 
               onClick={() => handleReviewAction('Rework')}
-              className="bg-slate-900/50 backdrop-blur-sm border-white/10 border border-rose-200 hover:bg-rose-50 text-rose-600 px-5 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center gap-2"
+              className="bg-transparent border border-rose-500/30 hover:bg-rose-500/10 text-rose-400 px-5 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center gap-2"
             >
               <AlertTriangle size={16} /> Return for Rework
             </button>
@@ -298,7 +300,8 @@ const ManagerWorkspace = () => {
                       placeholder={g.target_value.toString()}
                       value={goalEdits[g.id]?.target_value || ''}
                       onChange={(e) => handleEditChange(g.id, 'target_value', e.target.value)}
-                      className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      disabled={g.is_shared}
+                      className={`w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 transition-colors ${g.is_shared ? 'opacity-50 cursor-not-allowed' : ''}`}
                     />
                   </td>
                   <td className="px-4 py-3">
@@ -352,6 +355,13 @@ const ManagerWorkspace = () => {
         </div>
       </div>
 
+      {cycleStatus && !cycleStatus.can_update_tracking && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 p-4 rounded-xl flex items-center shadow-sm">
+          <Clock className="mr-3 flex-shrink-0" size={20} />
+          <span className="font-medium text-sm">Manager check-ins are currently closed. The next tracking window opens in the next cycle month (Jul/Oct/Jan/Mar).</span>
+        </div>
+      )}
+
       <div className="space-y-6">
         {employeeGoals.map((g) => {
           const trackData = employeeTracking.find(t => t.goal_id === g.id && t.quarter === selectedQuarter) || {};
@@ -391,9 +401,12 @@ const ManagerWorkspace = () => {
                 <div className="flex flex-col justify-end">
                   <button 
                     onClick={() => handleCheckinSubmit(g.id)}
-                    className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 whitespace-nowrap"
+                    disabled={cycleStatus && !cycleStatus.can_update_tracking}
+                    className={`px-6 py-3 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 whitespace-nowrap ${
+                      cycleStatus && !cycleStatus.can_update_tracking ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
                   >
-                    <Save size={16} /> Submit Check-in Log
+                    <Save size={16} /> {cycleStatus && !cycleStatus.can_update_tracking ? 'Window Closed' : 'Submit Check-in Log'}
                   </button>
                 </div>
               </div>
@@ -437,7 +450,7 @@ const ManagerWorkspace = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-slate-800/20 px-3 py-1.5 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-2 bg-slate-800/20 px-3 py-1.5 rounded-lg border border-white/10">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-400 hidden sm:block">Persona</label>
               <select 
                 value={xUserId} 

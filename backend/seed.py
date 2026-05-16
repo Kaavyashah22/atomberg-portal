@@ -1,3 +1,4 @@
+import os
 import asyncio
 import random
 from datetime import date
@@ -11,10 +12,18 @@ from main import (
     UserRole, GoalSheetStatus, UOM, Quarter, TrackingStatus
 )
 
-DATABASE_URL = "postgresql+asyncpg://localhost/atomberg_goals"
+# Pull the URL from the terminal
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost/atomberg_goals")
+
+# DIAGNOSTIC: This will tell us if it's hitting the Cloud or Local
+if "neon.tech" in DATABASE_URL:
+    print("🚀 TARGET: Neon Cloud Database")
+else:
+    print("💻 TARGET: Local MacBook Database")
+
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-
+# -------------------------
 def partition_weightage(num_goals: int) -> list[int]:
     """
     Dynamically partitions an integer exactly to 100 
