@@ -20,6 +20,6 @@
 ## 👤 Test Credentials
 | Role | Email | Password |
 | :--- | :--- | :--- |
-| **Admin** | admin1@atomberg.com | [Your Password] |
-| **Manager** | manager1@atomberg.com | [Your Password] |
-| **Employee** | employee1@atomberg.com | [Your Password] |
+| **Admin** | admin1@atomberg.com | [See official submission PDF] |
+| **Manager** | manager1@atomberg.com | [See official submission PDF] |
+| **Employee** | employee1@atomberg.com | [See official submission PDF] |
