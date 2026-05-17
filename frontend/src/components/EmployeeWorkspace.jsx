@@ -116,7 +116,13 @@ const EmployeeWorkspace = () => {
       const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/goals/sheet/active`);
       setSheet(data.sheet); setCycleStatus(data.cycle_status); setGoals(data.goals || []);
       const initTracking = {};
-      if (data.tracking) { data.tracking.forEach(t => { if (!initTracking[t.goal_id]) initTracking[t.goal_id] = {}; initTracking[t.goal_id][t.quarter] = t; }); }
+      if (data.tracking) { data.tracking.forEach(t => {
+        if (!initTracking[t.goal_id]) initTracking[t.goal_id] = {};
+        initTracking[t.goal_id][t.quarter] = {
+          ...t,
+          actual_achievement: t.actual_achievement != null ? parseFloat(Number(t.actual_achievement).toFixed(2)) : null,
+        };
+      }); }
       setTrackingState(initTracking);
     } catch {
       setSheet({ id: 101, status: 'Draft', is_locked: false, cycle_year: 2026 });
@@ -310,7 +316,10 @@ const EmployeeWorkspace = () => {
               {!isZeroBased ? (
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Actual Achievement</label>
-                  <input type="number" value={tState.actual_achievement || ''} onChange={(e) => handleTrackingChange(g.id, 'actual_achievement', e.target.value)} disabled={isLogLocked} className="w-full text-sm" />
+                  <input type="number" step="0.01" value={tState.actual_achievement ?? ''}
+                    onChange={(e) => handleTrackingChange(g.id, 'actual_achievement', e.target.value)}
+                    onBlur={(e) => { if (e.target.value !== '') handleTrackingChange(g.id, 'actual_achievement', parseFloat(Number(e.target.value).toFixed(2))); }}
+                    disabled={isLogLocked} className="w-full text-sm" />
                 </div>
               ) : (
                 <div className="text-slate-500 italic text-sm flex items-center gap-2"><Info size={14} /> Zero Based Goal</div>
