@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
+import toast from 'react-hot-toast';
 import { 
   LayoutDashboard, BarChart2, ShieldAlert, RefreshCw, 
   Unlock, Users, FileText, CheckCircle, Activity, UserCheck, Ghost, Target
 } from 'lucide-react';
+
+const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } } };
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -13,7 +18,6 @@ const AdminDashboard = () => {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [toastMessage, setToastMessage] = useState('');
   
   // Tab A Data
   const [completionData, setCompletionData] = useState(null);
@@ -37,9 +41,9 @@ const AdminDashboard = () => {
     cycle_year: 2026
   });
 
-  const showToast = (message) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(''), 4000);
+  const showToast = (message, type = 'success') => {
+    if (type === 'error') toast.error(message);
+    else toast.success(message);
   };
 
   const fetchWithAuth = async (url, options = {}) => {
@@ -142,9 +146,14 @@ const AdminDashboard = () => {
   };
 
   const SkeletonLoader = () => (
-    <div className="animate-pulse space-y-6">
-      <div className="h-32 bg-slate-200 rounded-lg w-full"></div>
-      <div className="h-64 bg-slate-200 rounded-lg w-full"></div>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1,2,3].map(i => <div key={i} className="skeleton h-28 rounded-xl" />)}
+      </div>
+      <div className="glass-card p-1">
+        <div className="skeleton h-12 w-full rounded-lg" />
+        {[1,2,3,4].map(i => <div key={i} className="skeleton h-14 w-full rounded-lg mt-1" />)}
+      </div>
     </div>
   );
 
@@ -161,7 +170,7 @@ const AdminDashboard = () => {
                   <p className="text-sm font-medium text-slate-400">Total Active Employees</p>
                   <p className="text-3xl font-bold text-white mt-1">{completionData.total_employees}</p>
                 </div>
-                <div className="bg-blue-50 p-4 rounded-xl text-blue-600"><Users size={28} /></div>
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/20"><Users size={20} className="text-white" /></div>
               </div>
             </div>
             <div className="bg-slate-900/50 backdrop-blur-sm p-6 rounded-2xl border border-white/10 transition-transform hover:-translate-y-1 duration-300">
@@ -172,7 +181,7 @@ const AdminDashboard = () => {
                     {completionData.sheets_submitted ?? 0}
                   </p>
                 </div>
-                <div className="bg-emerald-50 p-4 rounded-xl text-emerald-600"><CheckCircle size={28} /></div>
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-500/20"><CheckCircle size={20} className="text-white" /></div>
               </div>
             </div>
             <div className="bg-slate-900/50 backdrop-blur-sm p-6 rounded-2xl border border-white/10 transition-transform hover:-translate-y-1 duration-300">
@@ -181,7 +190,7 @@ const AdminDashboard = () => {
                   <p className="text-sm font-medium text-slate-400">Pending Drafts</p>
                   <p className="text-3xl font-bold text-amber-600 mt-1">{completionData.sheets_pending_draft ?? 0}</p>
                 </div>
-                <div className="bg-amber-50 p-4 rounded-xl text-amber-600"><FileText size={28} /></div>
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-600 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/20"><FileText size={20} className="text-white" /></div>
               </div>
             </div>
           </div>
@@ -240,30 +249,30 @@ const AdminDashboard = () => {
         {/* Exceptions Matrix */}
         {completionData && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-slate-900/50 backdrop-blur-sm border-white/10 rounded-lg shadow-sm border border-red-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-red-100 bg-red-50/50">
-                <h3 className="text-md font-bold text-red-800">Employees Missing Goal Updates</h3>
+            <div className="glass-card overflow-hidden border-rose-500/15">
+              <div className="px-5 py-3.5 border-b border-white/[0.06]">
+                <h3 className="text-sm font-bold text-rose-400">Employees Missing Goal Updates</h3>
               </div>
-              <ul className="divide-y divide-red-50 max-h-64 overflow-y-auto">
+              <ul className="divide-y divide-white/[0.04] max-h-64 overflow-y-auto">
                 {completionData.missing_employee_updates?.length > 0 ? completionData.missing_employee_updates.map((emp) => (
-                  <li key={emp.id} className="px-6 py-3 flex justify-between items-center text-sm hover:bg-red-50/30">
+                  <li key={emp.id} className="px-5 py-3 flex justify-between items-center text-sm hover:bg-white/[0.02]">
                     <span className="font-semibold text-slate-200">{emp.name}</span>
-                    <span className="bg-red-100 text-red-800 px-2.5 py-1 rounded-md text-xs font-bold border border-red-200">Missing Action</span>
+                    <span className="bg-rose-500/10 text-rose-400 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border border-rose-500/20">Missing</span>
                   </li>
-                )) : <li className="px-6 py-6 text-sm text-slate-400 text-center italic">No missing updates!</li>}
+                )) : <li className="px-5 py-8 text-sm text-slate-500 text-center">No missing updates</li>}
               </ul>
             </div>
-            <div className="bg-slate-900/50 backdrop-blur-sm border-white/10 rounded-lg shadow-sm border border-amber-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/50">
-                <h3 className="text-md font-bold text-amber-800">Managers Missing Check-ins</h3>
+            <div className="glass-card overflow-hidden border-amber-500/15">
+              <div className="px-5 py-3.5 border-b border-white/[0.06]">
+                <h3 className="text-sm font-bold text-amber-400">Managers Missing Check-ins</h3>
               </div>
-              <ul className="divide-y divide-amber-50 max-h-64 overflow-y-auto">
+              <ul className="divide-y divide-white/[0.04] max-h-64 overflow-y-auto">
                 {completionData.missing_manager_checkins?.length > 0 ? completionData.missing_manager_checkins.map((item) => (
-                  <li key={`${item.employee_id}-${item.goal_id}`} className="px-6 py-3 flex justify-between items-center text-sm hover:bg-amber-50/30">
+                  <li key={`${item.employee_id}-${item.goal_id}`} className="px-5 py-3 flex justify-between items-center text-sm hover:bg-white/[0.02]">
                     <span className="font-semibold text-slate-200">{item.employee_name} — {item.goal_title}</span>
-                    <span className="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-md text-xs font-bold border border-amber-200">Overdue Check-in</span>
+                    <span className="bg-amber-500/10 text-amber-400 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border border-amber-500/20">Overdue</span>
                   </li>
-                )) : <li className="px-6 py-6 text-sm text-slate-400 text-center italic">No missing check-ins!</li>}
+                )) : <li className="px-5 py-8 text-sm text-slate-500 text-center">No missing check-ins</li>}
               </ul>
             </div>
           </div>
@@ -477,7 +486,7 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 font-bold text-white">User {log.modified_by}</td>
                       <td className="px-6 py-4">
-                        <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md text-xs font-bold border border-indigo-100">
+                        <span className="bg-atomberg-500/10 text-atomberg-400 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border border-atomberg-500/20">
                             {log.action}
                         </span>
                       </td>
@@ -490,7 +499,7 @@ const AdminDashboard = () => {
                       <td className="px-6 py-4">
                         <button 
                           onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
-                          className="text-indigo-600 hover:text-indigo-800 text-xs font-bold uppercase tracking-wider bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors"
+                          className="text-atomberg-400 hover:text-atomberg-300 text-[10px] font-semibold uppercase tracking-wider bg-atomberg-500/10 hover:bg-atomberg-500/20 border border-atomberg-500/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                         >
                           {expandedLog === log.id ? 'Close Drawer' : 'Inspect JSON'}
                         </button>
@@ -530,23 +539,16 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-transparent text-slate-200 font-sans pb-12 selection:bg-indigo-200">
-      {/* Toast Notification Popup */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-fade-in border border-slate-700">
-          <CheckCircle size={20} className="text-emerald-400" />
-          <span className="font-medium">{toastMessage}</span>
-        </div>
-      )}
+    <div className="text-slate-200 font-sans pb-6">
 
       {/* Controls Bar */}
       <div className="border-b border-white/10 mb-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-indigo-600 to-blue-600 p-2 rounded-xl text-white shadow-sm">
-              <LayoutDashboard size={18} />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-atomberg-600 to-atomberg-500 flex items-center justify-center shadow-lg shadow-atomberg-500/20">
+              <LayoutDashboard size={16} className="text-white" />
             </div>
-            <span className="text-sm font-black text-slate-300 uppercase tracking-wider hidden sm:block">Admin Console</span>
+            <span className="text-sm font-extrabold text-white tracking-tight hidden sm:block">Admin Console</span>
           </div>
           
           <div className="flex items-center gap-3">
@@ -590,11 +592,9 @@ const AdminDashboard = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 mt-12">
         {/* API Error Banner */}
         {error && (
-          <div className="mb-8 bg-rose-50 border border-rose-200 p-5 rounded-xl shadow-sm">
-            <div className="flex items-center text-rose-800">
-              <ShieldAlert size={22} className="mr-3" />
-              <p className="font-bold">{error}</p>
-            </div>
+          <div className="mb-6 glass-card border-rose-500/20 p-4 flex items-center gap-3">
+            <ShieldAlert size={18} className="text-rose-400" />
+            <p className="text-sm font-medium text-rose-300">{error}</p>
           </div>
         )}
 
@@ -605,7 +605,7 @@ const AdminDashboard = () => {
               onClick={() => setActiveTab('A')}
               className={`py-3 px-6 rounded-lg font-bold text-sm flex items-center gap-2 transition-all duration-200 ${
                 activeTab === 'A' 
-                  ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
+                  ? 'bg-atomberg-500/15 text-atomberg-400 shadow-sm border border-atomberg-500/20' 
                   : 'bg-transparent text-slate-400 hover:bg-slate-800/20 hover:text-white'
               }`}
             >
@@ -615,7 +615,7 @@ const AdminDashboard = () => {
               onClick={() => setActiveTab('B')}
               className={`py-3 px-6 rounded-lg font-bold text-sm flex items-center gap-2 transition-all duration-200 ${
                 activeTab === 'B' 
-                  ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
+                  ? 'bg-atomberg-500/15 text-atomberg-400 shadow-sm border border-atomberg-500/20' 
                   : 'bg-transparent text-slate-400 hover:bg-slate-800/20 hover:text-white'
               }`}
             >
@@ -625,7 +625,7 @@ const AdminDashboard = () => {
               onClick={() => setActiveTab('C')}
               className={`py-3 px-6 rounded-lg font-bold text-sm flex items-center gap-2 transition-all duration-200 ${
                 activeTab === 'C' 
-                  ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
+                  ? 'bg-atomberg-500/15 text-atomberg-400 shadow-sm border border-atomberg-500/20' 
                   : 'bg-transparent text-slate-400 hover:bg-slate-800/20 hover:text-white'
               }`}
             >

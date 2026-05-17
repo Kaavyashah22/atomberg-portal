@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { Toaster } from 'react-hot-toast'
 import { Zap, User, Users, ShieldCheck } from 'lucide-react'
+import { LoadingProvider } from './components/LoadingOverlay'
 import AdminDashboard from './components/AdminDashboard'
 import EmployeeWorkspace from './components/EmployeeWorkspace'
 import ManagerWorkspace from './components/ManagerWorkspace'
@@ -16,6 +17,7 @@ function App() {
   const [activeRole, setActiveRole] = useState('employee')
 
   return (
+    <LoadingProvider>
     <div className="min-h-screen bg-deep relative overflow-x-hidden">
       {/* Ambient Background Orbs */}
       <div className="bg-orb bg-orb-orange" aria-hidden="true" />
@@ -134,6 +136,7 @@ function App() {
         </div>
       </footer>
     </div>
+    </LoadingProvider>
   )
 }
 
