@@ -11,6 +11,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000
 
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } } };
+const fmt = (v) => v != null && v !== '' ? Number(v).toFixed(2) : '—';
 
 /* ── Tooltip ────────────────────────────────────── */
 const Tooltip = ({ children, text }) => (
@@ -228,7 +229,7 @@ const ManagerWorkspace = () => {
             <tbody className="divide-y divide-white/[0.04] text-sm">
               {employeeGoals.map((g) => (
                 <tr key={g.id} className="hover:bg-white/[0.02] transition-colors">
-                  <td className="px-4 py-3.5 font-semibold text-slate-300">{g.thrust_area}</td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-300">{g.thrust_area || <span className="italic text-slate-500">General</span>}</td>
                   <td className="px-4 py-3.5 font-medium text-white">{g.title}</td>
                   <td className="px-4 py-3.5">
                     <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-white/[0.04] px-2 py-0.5 rounded-md">{g.uom.replace('_', ' ')}</span>
@@ -240,7 +241,7 @@ const ManagerWorkspace = () => {
                     />
                   </td>
                   <td className="px-4 py-3">
-                    <input type="number" placeholder={`${g.weightage}%`} value={goalEdits[g.id]?.weightage || ''}
+                    <input type="number" placeholder={`${Number(g.weightage).toFixed(2)}%`} value={goalEdits[g.id]?.weightage || ''}
                       onChange={(e) => handleEditChange(g.id, 'weightage', e.target.value)}
                       className="w-full text-sm"
                     />
@@ -299,16 +300,16 @@ const ManagerWorkspace = () => {
               <div className="px-5 py-4 border-b border-white/[0.06] flex flex-col sm:flex-row justify-between gap-3">
                 <div>
                   <h3 className="font-bold text-white text-sm">{g.title}</h3>
-                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">{g.thrust_area} · {g.weightage}% weight</p>
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">{g.thrust_area || <span className="italic">General</span>} · {Number(g.weightage).toFixed(2)}% weight</p>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-center">
                     <p className="text-[10px] font-semibold text-slate-500 uppercase">Target</p>
-                    <p className="font-extrabold text-white text-sm font-mono">{g.uom === 'Zero_Based' ? '0' : g.target_value}</p>
+                    <p className="font-extrabold text-white text-sm font-mono">{g.uom === 'Zero_Based' ? '0.00' : fmt(g.target_value)}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-[10px] font-semibold text-emerald-500 uppercase">Actual</p>
-                    <p className="font-extrabold text-emerald-400 text-sm font-mono">{trackData.actual_achievement ?? '—'}</p>
+                    <p className="font-extrabold text-emerald-400 text-sm font-mono">{trackData.actual_achievement != null ? fmt(trackData.actual_achievement) : '—'}</p>
                   </div>
                   {g.target_value > 0 && (
                     <div className="w-20">
@@ -358,7 +359,7 @@ const ManagerWorkspace = () => {
       <motion.header initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 h-10">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <Users size={18} className="text-white" />
           </div>

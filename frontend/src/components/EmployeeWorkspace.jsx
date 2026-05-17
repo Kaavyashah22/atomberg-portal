@@ -82,6 +82,15 @@ const StatusBadge = ({ status, locked }) => {
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } } };
 
+/* ── Helpers ────────────────────────────────────── */
+const fmt = (v) => v != null && v !== '' ? Number(v).toFixed(2) : '—';
+const QUARTER_WINDOWS = {
+  Q1: { month: 'July', period: 'Jul–Sep' },
+  Q2: { month: 'October', period: 'Oct–Dec' },
+  Q3: { month: 'January', period: 'Jan–Mar' },
+  Q4: { month: 'March', period: 'Mar (Year-End)' },
+};
+
 const EmployeeWorkspace = () => {
   const [xUserId, setXUserId] = useState(14);
   const [loading, setLoading] = useState(true);
@@ -170,7 +179,7 @@ const EmployeeWorkspace = () => {
             <h3 className={`font-bold text-sm ${totalWeightage === 100 ? 'text-emerald-400' : 'text-atomberg-300'}`}>
               {totalWeightage === 100 ? 'Weightage Balanced' : 'Weightage Allocation'}
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">{goals.length}/8 Goals · {totalWeightage}% of 100% allocated</p>
+            <p className="text-xs text-slate-400 mt-0.5">{goals.length}/8 Goals · {Number(totalWeightage).toFixed(2)}% of 100% allocated</p>
           </div>
         </div>
         <div className="flex gap-3 items-center flex-wrap justify-end">
@@ -226,7 +235,7 @@ const EmployeeWorkspace = () => {
             <tbody className="divide-y divide-white/[0.04]">
               {goals.map((g, idx) => (
                 <motion.tr key={g.id} variants={fadeUp} className="group hover:bg-white/[0.02] transition-colors">
-                  <td className="px-4 py-3"><input type="text" value={g.thrust_area} onChange={(e) => handleGoalChange(idx, 'thrust_area', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" placeholder="e.g. Revenue" /></td>
+                  <td className="px-4 py-3">{isReadOnly && !g.thrust_area ? <span className="text-sm italic text-slate-500">General</span> : <input type="text" value={g.thrust_area} onChange={(e) => handleGoalChange(idx, 'thrust_area', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" placeholder="e.g. Revenue" />}</td>
                   <td className="px-4 py-3"><input type="text" value={g.title} onChange={(e) => handleGoalChange(idx, 'title', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" placeholder="Goal title" /></td>
                   <td className="px-4 py-3">
                     <select value={g.uom} onChange={(e) => handleGoalChange(idx, 'uom', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm">
@@ -280,7 +289,7 @@ const EmployeeWorkspace = () => {
       {cycleStatus && cycleStatus.phase === "GOAL_SETTING" && (
         <motion.div variants={fadeUp} className="glass-card border-amber-500/20 p-4 flex items-center gap-3">
           <Clock className="text-amber-400 flex-shrink-0" size={18} />
-          <span className="text-sm font-medium text-amber-300">Tracking updates are currently closed. The Q1 Tracking window opens in July.</span>
+          <span className="text-sm font-medium text-amber-300">Tracking updates are currently closed. The {selectedQuarter} tracking window opens in {QUARTER_WINDOWS[selectedQuarter]?.month || 'the next cycle month'} ({QUARTER_WINDOWS[selectedQuarter]?.period}).</span>
         </motion.div>
       )}
 
@@ -294,7 +303,7 @@ const EmployeeWorkspace = () => {
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-atomberg-500" />
                 <span className="font-semibold text-white text-sm">{g.title}</span>
-                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-slate-800/50 px-2 py-0.5 rounded-full">{g.weightage}% weight</span>
+                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-slate-800/50 px-2 py-0.5 rounded-full">{Number(g.weightage).toFixed(2)}% weight</span>
               </div>
             </div>
             <div className="p-5 grid grid-cols-1 md:grid-cols-4 gap-5 items-end">
@@ -338,9 +347,9 @@ const EmployeeWorkspace = () => {
     <div className="text-slate-200 font-sans pb-6">
       {/* Header */}
       <motion.header initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 h-10">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-atomberg-600 to-atomberg-500 flex items-center justify-center shadow-lg shadow-atomberg-500/20">
             <Target size={18} className="text-white" />
           </div>
@@ -349,7 +358,7 @@ const EmployeeWorkspace = () => {
             <p className="text-xs text-slate-500 font-medium">Goal Setting & Performance Tracking</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 h-10">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 hidden sm:block">Context</label>
             <select value={xUserId} onChange={(e) => setXUserId(Number(e.target.value))}
