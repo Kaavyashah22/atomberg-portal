@@ -1,276 +1,149 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Plus, Save, AlertTriangle, CheckCircle, Clock, 
-  Target, ShieldAlert, FileText, Send, Trash2, Calendar
+import { motion } from 'motion/react';
+import toast from 'react-hot-toast';
+import {
+  Plus, Save, AlertTriangle, CheckCircle, Clock,
+  Target, ShieldAlert, FileText, Send, Trash2, Calendar, Info
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
+/* ── SVG Progress Ring ──────────────────────────── */
+const ProgressRing = ({ percent, size = 80, strokeWidth = 6 }) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clampedPercent = Math.min(Math.max(percent, 0), 100);
+  const offset = circumference - (clampedPercent / 100) * circumference;
+  const isComplete = clampedPercent === 100;
+
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke="rgba(255,255,255,0.06)" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke={isComplete ? '#10b981' : '#FF6B00'}
+          strokeWidth={strokeWidth} strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          className="progress-ring-circle"
+          style={{ filter: isComplete ? 'drop-shadow(0 0 6px rgba(16,185,129,0.4))' : 'drop-shadow(0 0 6px rgba(255,107,0,0.3))' }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={`text-lg font-extrabold ${isComplete ? 'text-emerald-400' : 'text-atomberg-400'}`}>
+          {clampedPercent}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
+/* ── Skeleton Screen ────────────────────────────── */
+const SkeletonLoader = () => (
+  <div className="space-y-6 pt-4">
+    <div className="flex items-center justify-between">
+      <div className="skeleton h-8 w-64" /><div className="skeleton h-8 w-24 rounded-full" />
+    </div>
+    <div className="glass-card p-1">
+      <div className="skeleton h-14 w-full rounded-lg" />
+      {[1,2,3].map(i => <div key={i} className="skeleton h-16 w-full rounded-lg mt-1" />)}
+    </div>
+  </div>
+);
+
+/* ── Tooltip Component ──────────────────────────── */
+const Tooltip = ({ children, text }) => (
+  <div className="relative group/tip inline-flex">
+    {children}
+    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-xs text-slate-200 rounded-lg border border-white/10 opacity-0 group-hover/tip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-xl">
+      {text}
+      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-800" />
+    </div>
+  </div>
+);
+
+/* ── Status Badge ───────────────────────────────── */
+const StatusBadge = ({ status, locked }) => {
+  const config = {
+    Approved: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+    Pending_Approval: { bg: 'bg-atomberg-500/10', text: 'text-atomberg-400', border: 'border-atomberg-500/20', pulse: true },
+    Rework: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20' },
+    Draft: { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-700' },
+  };
+  const c = config[status] || config.Draft;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${c.bg} ${c.text} ${c.border} ${c.pulse ? 'badge-pulse' : ''}`}>
+      {c.pulse && <span className="w-1.5 h-1.5 rounded-full bg-atomberg-400 animate-pulse" />}
+      {status.replace('_', ' ')}{locked ? ' · Locked' : ''}
+    </span>
+  );
+};
+
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
+const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } } };
+
 const EmployeeWorkspace = () => {
-  const [xUserId, setXUserId] = useState(14); // Default to Mock Employee
+  const [xUserId, setXUserId] = useState(14);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [toast, setToast] = useState('');
-  
-  // Workspace State
   const [sheet, setSheet] = useState(null);
   const [cycleStatus, setCycleStatus] = useState(null);
   const [goals, setGoals] = useState([]);
-  
-  // View A specific state
   const [validationError, setValidationError] = useState('');
-  
-  // View B specific state
   const [selectedQuarter, setSelectedQuarter] = useState('Q1');
   const [trackingState, setTrackingState] = useState({});
-
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 4000);
-  };
 
   const fetchWithAuth = async (url, options = {}) => {
     const res = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-ID': xUserId.toString(),
-        ...options.headers,
-      }
+      headers: { 'Content-Type': 'application/json', 'X-User-ID': xUserId.toString(), ...options.headers }
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => null);
-      throw new Error(err?.detail || `Request failed: ${res.status}`);
-    }
+    if (!res.ok) { const err = await res.json().catch(() => null); throw new Error(err?.detail || `Request failed: ${res.status}`); }
     return res.json();
   };
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      // This hits the assumed endpoint for fetching the employee's active sheet
       const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/goals/sheet/active`);
-      setSheet(data.sheet);
-      setCycleStatus(data.cycle_status);
-      setGoals(data.goals || []);
-      
-      // Pre-fill tracking state from fetched data if available
+      setSheet(data.sheet); setCycleStatus(data.cycle_status); setGoals(data.goals || []);
       const initTracking = {};
-      if (data.tracking) {
-        data.tracking.forEach(t => {
-          if (!initTracking[t.goal_id]) initTracking[t.goal_id] = {};
-          initTracking[t.goal_id][t.quarter] = t;
-        });
-      }
+      if (data.tracking) { data.tracking.forEach(t => { if (!initTracking[t.goal_id]) initTracking[t.goal_id] = {}; initTracking[t.goal_id][t.quarter] = t; }); }
       setTrackingState(initTracking);
-    } catch (err) {
-      console.warn("Backend endpoint /api/v1/goals/my-sheet missing or failing. Simulating hydration...");
-      // Simulate fallback state so the UI remains interactive for the demo
+    } catch {
       setSheet({ id: 101, status: 'Draft', is_locked: false, cycle_year: 2026 });
-      setGoals([{ 
-        id: Date.now(), thrust_area: 'Operational Excellence', title: 'Reduce Latency', 
-        description: 'Optimize queries', uom: 'Numeric_Min', target_value: 50, weightage: 100, deadline: '', is_shared: false 
-      }]);
-    } finally {
-      setLoading(false);
-    }
+      setGoals([{ id: Date.now(), thrust_area: 'Operational Excellence', title: 'Reduce Latency', description: 'Optimize queries', uom: 'Numeric_Min', target_value: 50, weightage: 100, deadline: '', is_shared: false }]);
+    } finally { setLoading(false); }
   }, [xUserId]);
 
-  useEffect(() => {
-    loadWorkspace();
-  }, [loadWorkspace]);
+  useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
 
-  // ==========================================
-  // VIEW A: Interactive Goal Setting Matrix
-  // ==========================================
   const totalWeightage = goals.reduce((acc, g) => acc + (Number(g.weightage) || 0), 0);
   const isMaxGoalsReached = goals.length >= 8;
+  const isReadOnly = sheet && (sheet.status === 'Pending_Approval' || sheet.status === 'Approved');
+  const isTrackingMode = sheet && sheet.status === 'Approved' && sheet.is_locked;
 
-  const handleAddGoal = () => {
-    if (isMaxGoalsReached) return;
-    setGoals([...goals, { 
-      id: Date.now(), thrust_area: '', title: '', description: '', 
-      uom: 'Numeric_Max', target_value: 0, weightage: 0, deadline: '', is_shared: false 
-    }]);
-  };
-
-  const handleGoalChange = (index, field, value) => {
-    const newGoals = [...goals];
-    newGoals[index][field] = value;
-    setGoals(newGoals);
-  };
-
-  const handleDeleteGoal = (index) => {
-    setGoals(goals.filter((_, i) => i !== index));
-  };
+  const handleAddGoal = () => { if (isMaxGoalsReached) return; setGoals([...goals, { id: Date.now(), thrust_area: '', title: '', description: '', uom: 'Numeric_Max', target_value: 0, weightage: 0, deadline: '', is_shared: false }]); };
+  const handleGoalChange = (index, field, value) => { const n = [...goals]; n[index][field] = value; setGoals(n); };
+  const handleDeleteGoal = (index) => { setGoals(goals.filter((_, i) => i !== index)); };
 
   const handleSubmitSheet = async () => {
-    // Client-side Defensive Validations
-    if (goals.length === 0) {
-      setValidationError("A goal sheet cannot be submitted empty.");
-      return;
-    }
-    if (totalWeightage !== 100) {
-      setValidationError(`Total weightage must equal exactly 100%. Current total is ${totalWeightage}%.`);
-      return;
-    }
+    if (goals.length === 0) { setValidationError("A goal sheet cannot be submitted empty."); return; }
+    if (totalWeightage !== 100) { setValidationError(`Total weightage must equal exactly 100%. Current total is ${totalWeightage}%.`); return; }
     const invalidGoal = goals.find(g => Number(g.weightage) < 10);
-    if (invalidGoal) {
-      setValidationError(`Minimum weightage per individual goal must be >= 10%.`);
-      return;
-    }
-
+    if (invalidGoal) { setValidationError(`Minimum weightage per individual goal must be >= 10%.`); return; }
     setValidationError('');
     try {
       await fetchWithAuth(`${API_BASE_URL}/api/v1/goals/submit`, {
         method: 'POST',
-        body: JSON.stringify({
-          sheet_id: sheet.id,
-          goals: goals.map(g => ({
-            id: g.id > 1000000 ? null : g.id, // strip client-side temp IDs
-            thrust_area: g.thrust_area,
-            title: g.title,
-            description: g.description,
-            uom: g.uom,
-            target_value: Number(g.target_value),
-            weightage: Number(g.weightage),
-            deadline: g.deadline || null
-          }))
-        })
+        body: JSON.stringify({ sheet_id: sheet.id, goals: goals.map(g => ({ id: g.id > 1000000 ? null : g.id, thrust_area: g.thrust_area, title: g.title, description: g.description, uom: g.uom, target_value: Number(g.target_value), weightage: Number(g.weightage), deadline: g.deadline || null })) })
       });
-      showToast("Goal sheet submitted successfully!");
-      // Simulate status change locally to immediately reflect UI transition if desired
+      toast.success('Goal sheet submitted successfully!');
       setSheet(prev => ({ ...prev, status: 'Pending_Approval' }));
-    } catch (err) {
-      setValidationError(err.message);
-    }
+    } catch (err) { setValidationError(err.message); }
   };
 
-  const isReadOnly = sheet && (sheet.status === 'Pending_Approval' || sheet.status === 'Approved');
-
-  const renderGoalSettingMatrix = () => (
-    <div className="space-y-6 animate-fade-in">
-      {/* Dynamic Weightage Banner */}
-      <div className={`p-4 rounded-xl flex items-center justify-between shadow-sm transition-colors duration-500 ${
-        totalWeightage === 100 ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'
-      }`}>
-        <div className="flex items-center gap-3">
-          {totalWeightage === 100 ? <CheckCircle className="text-emerald-500" size={24}/> : <AlertTriangle className="text-amber-500" size={24}/>}
-          <div>
-            <h3 className={`font-bold ${totalWeightage === 100 ? 'text-emerald-800' : 'text-amber-800'}`}>
-              Total Sheet Weightage
-            </h3>
-            <p className={`text-sm ${totalWeightage === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
-              Allocated: {totalWeightage}% / 100%
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-4 items-center">
-          <span className="text-sm font-semibold text-slate-400">{goals.length}/8 Goals Added</span>
-          {!isReadOnly && (
-            <button 
-              onClick={handleAddGoal} 
-              disabled={isMaxGoalsReached || (cycleStatus && !cycleStatus.can_edit_goals)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm ${
-                isMaxGoalsReached || (cycleStatus && !cycleStatus.can_edit_goals) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-800 hover:bg-slate-700 text-white'
-              }`}
-            >
-              <Plus size={16}/> Add Goal Row
-            </button>
-          )}
-          <button 
-            onClick={handleSubmitSheet}
-            disabled={isReadOnly || (cycleStatus && !cycleStatus.can_edit_goals)}
-            className={`px-5 py-2.5 rounded-lg text-sm font-bold flex items-center shadow-sm transition-colors
-              ${(isReadOnly || (cycleStatus && !cycleStatus.can_edit_goals)) ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-          >
-            <Send size={16} className="mr-2" />
-            {isReadOnly ? 'Submitted' : 'Submit for Approval'}
-          </button>
-        </div>
-      </div>
-
-      {validationError && (
-        <div className="mb-6 bg-rose-500/10 border border-rose-500/20 text-rose-400 p-4 rounded-xl flex items-center shadow-sm">
-          <AlertTriangle className="mr-3 flex-shrink-0" size={20} />
-          <span className="font-medium text-sm">{validationError}</span>
-        </div>
-      )}
-      {cycleStatus && cycleStatus.phase === "CLOSED" && (
-        <div className="mb-6 bg-amber-500/10 border border-amber-500/20 text-amber-500 p-4 rounded-xl flex items-center shadow-sm">
-          <Clock className="mr-3 flex-shrink-0" size={20} />
-          <span className="font-medium text-sm">Action windows are currently closed. Next tracking window opens in July/Oct/Jan/Mar.</span>
-        </div>
-      )}
-
-      <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-white/10/50">
-                <th className="px-4 py-4 min-w-[150px]">Thrust Area</th>
-                <th className="px-4 py-4 min-w-[200px]">Goal Title</th>
-                <th className="px-4 py-4">UoM</th>
-                <th className="px-4 py-4 w-28">Target</th>
-                <th className="px-4 py-4 w-28">Weight (%)</th>
-                <th className="px-4 py-4 w-40">Deadline</th>
-                <th className="px-4 py-4 w-16"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/50">
-              {goals.map((g, idx) => (
-                <tr key={g.id} className="hover:bg-slate-800/20 transition-colors group">
-                  <td className="px-4 py-3">
-                    <input type="text" value={g.thrust_area} onChange={(e) => handleGoalChange(idx, 'thrust_area', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <input type="text" value={g.title} onChange={(e) => handleGoalChange(idx, 'title', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <select value={g.uom} onChange={(e) => handleGoalChange(idx, 'uom', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5">
-                      <option value="Numeric_Max">Numeric Max</option>
-                      <option value="Numeric_Min">Numeric Min</option>
-                      <option value="Timeline">Timeline</option>
-                      <option value="Zero_Based">Zero Based</option>
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    <input type="number" value={g.target_value} onChange={(e) => handleGoalChange(idx, 'target_value', e.target.value)} disabled={g.is_shared || g.uom === 'Zero_Based' || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <input type="number" value={g.weightage} onChange={(e) => handleGoalChange(idx, 'weightage', e.target.value)} disabled={isReadOnly} className="w-full text-sm border-slate-700 rounded-md bg-slate-800/50 text-white p-2 border" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <input type="date" value={g.deadline} onChange={(e) => handleGoalChange(idx, 'deadline', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5" />
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {!g.is_shared && !isReadOnly && (
-                      <button onClick={() => handleDeleteGoal(idx)} className="text-slate-400 hover:text-rose-500 transition-colors p-1.5 opacity-0 group-hover:opacity-100">
-                        <Trash2 size={18} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
   const handleTrackingChange = (goalId, field, value) => {
-    setTrackingState(prev => ({
-      ...prev,
-      [goalId]: {
-        ...(prev[goalId] || {}),
-        [selectedQuarter]: {
-          ...(prev[goalId]?.[selectedQuarter] || {}),
-          [field]: value
-        }
-      }
-    }));
+    setTrackingState(prev => ({ ...prev, [goalId]: { ...(prev[goalId] || {}), [selectedQuarter]: { ...(prev[goalId]?.[selectedQuarter] || {}), [field]: value } } }));
   };
 
   const handleSaveTracking = async (goalId) => {
@@ -278,193 +151,236 @@ const EmployeeWorkspace = () => {
     try {
       await fetchWithAuth(`${API_BASE_URL}/api/v1/tracking/employee/update`, {
         method: 'PUT',
-        body: JSON.stringify({
-          goal_id: goalId,
-          quarter: selectedQuarter,
-          actual_achievement: data.actual_achievement ? Number(data.actual_achievement) : null,
-          status: data.status || 'Not Started',
-          completion_date: data.completion_date || null
-        })
+        body: JSON.stringify({ goal_id: goalId, quarter: selectedQuarter, actual_achievement: data.actual_achievement ? Number(data.actual_achievement) : null, status: data.status || 'Not Started', completion_date: data.completion_date || null })
       });
-      showToast(`Quarterly updates synchronized successfully.`);
-    } catch (err) {
-      showToast(`Sync Error: ${err.message}`);
-    }
+      toast.success('Quarterly update saved.');
+    } catch (err) { toast.error(`Sync Error: ${err.message}`); }
   };
 
-  const renderTrackingLogger = () => (
-    <div className="space-y-6 animate-fade-in">
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-6 shadow-md border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2"><Target className="text-indigo-400" /> Quarterly Tracking Logger</h2>
+  /* ── Goal Setting Matrix ────────────────────── */
+  const renderGoalSettingMatrix = () => (
+    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+      {/* Weightage + Progress Ring Banner */}
+      <motion.div variants={fadeUp}
+        className={`glass-card p-5 flex flex-col sm:flex-row items-center justify-between gap-4 ${totalWeightage === 100 ? 'border-emerald-500/20' : 'border-atomberg-500/20'}`}
+      >
+        <div className="flex items-center gap-5">
+          <ProgressRing percent={totalWeightage} />
+          <div>
+            <h3 className={`font-bold text-sm ${totalWeightage === 100 ? 'text-emerald-400' : 'text-atomberg-300'}`}>
+              {totalWeightage === 100 ? 'Weightage Balanced' : 'Weightage Allocation'}
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">{goals.length}/8 Goals · {totalWeightage}% of 100% allocated</p>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <select 
-            value={selectedQuarter} 
-            onChange={(e) => setSelectedQuarter(e.target.value)}
-            className="bg-indigo-600 border-none rounded-md py-1.5 pl-3 pr-8 text-sm font-bold text-white cursor-pointer"
-          >
-            <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
-          </select>
+        <div className="flex gap-3 items-center flex-wrap justify-end">
+          {!isReadOnly && (
+            <Tooltip text={isMaxGoalsReached ? 'Maximum 8 goals reached' : (cycleStatus && !cycleStatus.can_edit_goals) ? 'Goal editing window closed (May)' : 'Add a new goal row'}>
+              <button onClick={handleAddGoal}
+                disabled={isMaxGoalsReached || (cycleStatus && !cycleStatus.can_edit_goals)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.12] text-slate-200 cursor-pointer"
+              ><Plus size={15} /> Add Goal</button>
+            </Tooltip>
+          )}
+          <Tooltip text={isReadOnly ? 'Sheet already submitted' : (cycleStatus && !cycleStatus.can_edit_goals) ? 'Submission window: May only' : 'Submit sheet for manager approval'}>
+            <button onClick={handleSubmitSheet}
+              disabled={isReadOnly || (cycleStatus && !cycleStatus.can_edit_goals)}
+              className={`px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                (isReadOnly || (cycleStatus && !cycleStatus.can_edit_goals))
+                  ? 'bg-slate-800/50 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                  : 'bg-gradient-to-r from-atomberg-600 to-atomberg-500 hover:from-atomberg-500 hover:to-atomberg-400 text-white shadow-lg shadow-atomberg-500/20'
+              }`}
+            ><Send size={15} /> {isReadOnly ? 'Submitted' : 'Submit for Approval'}</button>
+          </Tooltip>
         </div>
-      </div>
+      </motion.div>
 
-      {cycleStatus && cycleStatus.phase === "GOAL_SETTING" && (
-        <div className="mb-6 bg-amber-500/10 border border-amber-500/20 text-amber-500 p-4 rounded-xl flex items-center shadow-sm">
-          <Clock className="mr-3 flex-shrink-0" size={20} />
-          <span className="font-medium text-sm">Tracking updates are currently closed. The Q1 Tracking window opens in July.</span>
-        </div>
+      {validationError && (
+        <motion.div variants={fadeUp} className="glass-card border-rose-500/20 p-4 flex items-center gap-3">
+          <AlertTriangle className="text-rose-400 flex-shrink-0" size={18} />
+          <span className="text-sm font-medium text-rose-300">{validationError}</span>
+        </motion.div>
+      )}
+      {cycleStatus && cycleStatus.phase === "CLOSED" && (
+        <motion.div variants={fadeUp} className="glass-card border-amber-500/20 p-4 flex items-center gap-3">
+          <Clock className="text-amber-400 flex-shrink-0" size={18} />
+          <span className="text-sm font-medium text-amber-300">Action windows are currently closed. Next tracking window opens in July/Oct/Jan/Mar.</span>
+        </motion.div>
       )}
 
-      <div className="space-y-4">
-        {goals.map(g => {
-          const tState = trackingState[g.id]?.[selectedQuarter] || {};
-          const isZeroBased = g.uom === 'Zero_Based';
-          const isLogLocked = cycleStatus && !cycleStatus.can_update_tracking;
-          
-          return (
-            <div key={g.id} className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
-              <div className="bg-slate-800/20 border-b border-white/10 px-6 py-4">
-                <span className="font-bold text-white">{g.title}</span>
-              </div>
-              <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                  {!isZeroBased ? (
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Actual Achievement</label>
-                      <input 
-                        type="number" 
-                        value={tState.actual_achievement || ''} 
-                        onChange={(e) => handleTrackingChange(g.id, 'actual_achievement', e.target.value)}
-                        disabled={isLogLocked}
-                        className="w-full bg-slate-900 border border-slate-700 text-white text-sm rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  ) : (
-                    <div className="text-slate-400 italic text-sm">Zero Based Goal</div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Progress Status</label>
-                    <select 
-                      value={tState.status || 'Not Started'} 
-                      onChange={(e) => handleTrackingChange(g.id, 'status', e.target.value)}
-                      disabled={isLogLocked}
-                      className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5"
-                    >
-                      <option value="Not Started">Not Started</option><option value="On Track">On Track</option><option value="Completed">Completed</option>
+      {/* Goal Table */}
+      <motion.div variants={fadeUp} className="glass-card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="text-slate-500 text-[11px] font-semibold uppercase tracking-wider border-b border-white/[0.06]">
+                <th className="px-4 py-3.5 min-w-[140px]">Thrust Area</th>
+                <th className="px-4 py-3.5 min-w-[180px]">Goal Title</th>
+                <th className="px-4 py-3.5">UoM</th>
+                <th className="px-4 py-3.5 w-24">Target</th>
+                <th className="px-4 py-3.5 w-24">Weight %</th>
+                <th className="px-4 py-3.5 w-36">Deadline</th>
+                <th className="px-4 py-3.5 w-12"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.04]">
+              {goals.map((g, idx) => (
+                <motion.tr key={g.id} variants={fadeUp} className="group hover:bg-white/[0.02] transition-colors">
+                  <td className="px-4 py-3"><input type="text" value={g.thrust_area} onChange={(e) => handleGoalChange(idx, 'thrust_area', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" placeholder="e.g. Revenue" /></td>
+                  <td className="px-4 py-3"><input type="text" value={g.title} onChange={(e) => handleGoalChange(idx, 'title', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" placeholder="Goal title" /></td>
+                  <td className="px-4 py-3">
+                    <select value={g.uom} onChange={(e) => handleGoalChange(idx, 'uom', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm">
+                      <option value="Numeric_Max">Numeric Max</option><option value="Numeric_Min">Numeric Min</option><option value="Timeline">Timeline</option><option value="Zero_Based">Zero Based</option>
                     </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Completion Date</label>
-                    <input 
-                      type="date" 
-                      value={tState.completion_date || ''} 
-                      onChange={(e) => handleTrackingChange(g.id, 'completion_date', e.target.value)}
-                      disabled={isLogLocked}
-                      className="w-full text-sm bg-slate-900 border border-slate-700 text-white rounded-lg p-2.5"
-                    />
-                  </div>
-
-                  <div>
-                    <button 
-                      onClick={() => handleSaveTracking(g.id)}
-                      disabled={isLogLocked}
-                      className={`w-full px-4 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm flex items-center justify-center gap-2 ${
-                        isLogLocked ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      }`}
-                    >
-                      <Save size={16} /> {isLogLocked ? 'Window Closed' : 'Save Row'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+                  </td>
+                  <td className="px-4 py-3"><input type="number" value={g.target_value} onChange={(e) => handleGoalChange(idx, 'target_value', e.target.value)} disabled={g.is_shared || g.uom === 'Zero_Based' || isReadOnly} className="w-full text-sm" /></td>
+                  <td className="px-4 py-3"><input type="number" value={g.weightage} onChange={(e) => handleGoalChange(idx, 'weightage', e.target.value)} disabled={isReadOnly} className="w-full text-sm font-mono" /></td>
+                  <td className="px-4 py-3"><input type="date" value={g.deadline} onChange={(e) => handleGoalChange(idx, 'deadline', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" /></td>
+                  <td className="px-4 py-3 text-center">
+                    {!g.is_shared && !isReadOnly && (
+                      <button onClick={() => handleDeleteGoal(idx)} className="text-slate-600 hover:text-rose-400 transition-colors p-1 opacity-0 group-hover:opacity-100 cursor-pointer"><Trash2 size={16} /></button>
+                    )}
+                  </td>
+                </motion.tr>
+              ))}
+              {goals.length === 0 && (
+                <tr><td colSpan="7" className="px-6 py-16 text-center">
+                  <FileText size={40} className="mx-auto text-slate-700 mb-3" />
+                  <p className="text-sm font-semibold text-slate-400">No goals added yet</p>
+                  <p className="text-xs text-slate-600 mt-1">Click "Add Goal" to begin building your goal sheet.</p>
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 
-  // ==========================================
-  // Global Shell Rendering
-  // ==========================================
-  const SkeletonLoader = () => (
-    <div className="animate-pulse space-y-6 pt-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="h-16 bg-slate-200 rounded-xl w-full"></div>
-      <div className="h-96 bg-slate-200 rounded-xl w-full"></div>
-    </div>
+  /* ── Tracking Logger ────────────────────────── */
+  const renderTrackingLogger = () => (
+    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+      <motion.div variants={fadeUp} className="glass-card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+            <Target size={18} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-white">Quarterly Tracking Logger</h2>
+            <p className="text-xs text-slate-400">Log actual achievements against your approved targets.</p>
+          </div>
+        </div>
+        <select value={selectedQuarter} onChange={(e) => setSelectedQuarter(e.target.value)}
+          className="bg-gradient-to-r from-atomberg-600 to-atomberg-500 border-none rounded-lg py-2 px-4 text-sm font-bold text-white cursor-pointer shadow-lg shadow-atomberg-500/20"
+        >
+          <option value="Q1">Q1</option><option value="Q2">Q2</option><option value="Q3">Q3</option><option value="Q4">Q4</option>
+        </select>
+      </motion.div>
+
+      {cycleStatus && cycleStatus.phase === "GOAL_SETTING" && (
+        <motion.div variants={fadeUp} className="glass-card border-amber-500/20 p-4 flex items-center gap-3">
+          <Clock className="text-amber-400 flex-shrink-0" size={18} />
+          <span className="text-sm font-medium text-amber-300">Tracking updates are currently closed. The Q1 Tracking window opens in July.</span>
+        </motion.div>
+      )}
+
+      {goals.map((g, idx) => {
+        const tState = trackingState[g.id]?.[selectedQuarter] || {};
+        const isZeroBased = g.uom === 'Zero_Based';
+        const isLogLocked = cycleStatus && !cycleStatus.can_update_tracking;
+        return (
+          <motion.div key={g.id} variants={fadeUp} className="glass-card glass-card-hover overflow-hidden">
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-atomberg-500" />
+                <span className="font-semibold text-white text-sm">{g.title}</span>
+                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-slate-800/50 px-2 py-0.5 rounded-full">{g.weightage}% weight</span>
+              </div>
+            </div>
+            <div className="p-5 grid grid-cols-1 md:grid-cols-4 gap-5 items-end">
+              {!isZeroBased ? (
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Actual Achievement</label>
+                  <input type="number" value={tState.actual_achievement || ''} onChange={(e) => handleTrackingChange(g.id, 'actual_achievement', e.target.value)} disabled={isLogLocked} className="w-full text-sm" />
+                </div>
+              ) : (
+                <div className="text-slate-500 italic text-sm flex items-center gap-2"><Info size={14} /> Zero Based Goal</div>
+              )}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Progress Status</label>
+                <select value={tState.status || 'Not Started'} onChange={(e) => handleTrackingChange(g.id, 'status', e.target.value)} disabled={isLogLocked} className="w-full text-sm">
+                  <option value="Not Started">Not Started</option><option value="On Track">On Track</option><option value="Completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Completion Date</label>
+                <input type="date" value={tState.completion_date || ''} onChange={(e) => handleTrackingChange(g.id, 'completion_date', e.target.value)} disabled={isLogLocked} className="w-full text-sm" />
+              </div>
+              <div>
+                <Tooltip text={isLogLocked ? 'Tracking window closed. Opens Jul/Oct/Jan/Mar.' : 'Save this quarter\'s tracking data'}>
+                  <button onClick={() => handleSaveTracking(g.id)} disabled={isLogLocked}
+                    className={`w-full px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      isLogLocked ? 'bg-slate-800/50 text-slate-500 cursor-not-allowed border border-slate-700/50' : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-lg shadow-emerald-500/20'
+                    }`}
+                  ><Save size={15} /> {isLogLocked ? 'Closed' : 'Save'}</button>
+                </Tooltip>
+              </div>
+            </div>
+          </motion.div>
+        );
+      })}
+    </motion.div>
   );
 
   if (loading) return <SkeletonLoader />;
 
-  const isTrackingMode = sheet && sheet.status === 'Approved' && sheet.is_locked;
-
   return (
-    <div className="min-h-screen bg-transparent text-slate-200 font-sans pb-12 selection:bg-indigo-200">
-      {/* Toast Notification Popup */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-slate-900 text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-fade-in border border-slate-700">
-          <CheckCircle size={20} className="text-emerald-400" />
-          <span className="font-medium">{toast}</span>
+    <div className="text-slate-200 font-sans pb-6">
+      {/* Header */}
+      <motion.header initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-atomberg-600 to-atomberg-500 flex items-center justify-center shadow-lg shadow-atomberg-500/20">
+            <Target size={18} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-extrabold text-white tracking-tight">Employee Workspace</h1>
+            <p className="text-xs text-slate-500 font-medium">Goal Setting & Performance Tracking</p>
+          </div>
         </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 hidden sm:block">Context</label>
+            <select value={xUserId} onChange={(e) => setXUserId(Number(e.target.value))}
+              className="bg-transparent border-none py-0.5 pl-1 pr-6 text-sm font-semibold text-white focus:ring-0 cursor-pointer"
+            >
+              <option value={14}>Employee (ID: 14)</option>
+              <option value={15}>Employee (ID: 15)</option>
+            </select>
+          </div>
+        </div>
+      </motion.header>
+
+      {/* Sheet Status */}
+      {sheet && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6 flex items-center gap-3 flex-wrap">
+          <h2 className="text-xl font-extrabold text-white">My Goal Sheet</h2>
+          <span className="text-sm font-mono text-slate-500">{sheet.cycle_year} Cycle</span>
+          <StatusBadge status={sheet.status} locked={sheet.is_locked} />
+        </motion.div>
       )}
 
-      {/* Workspace Header */}
-      <header className="bg-transparent border-b border-white/10 relative z-30 mb-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-br from-indigo-600 to-blue-600 p-2 rounded-xl text-white shadow-sm">
-              <Target size={20} />
-            </div>
-            <h1 className="text-xl font-black leading-relaxed tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-blue-600 hidden sm:block">
-              Employee Workspace
-            </h1>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-slate-800/20 px-3 py-1.5 rounded-lg border border-white/10">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 hidden sm:block">Context</label>
-              <select 
-                value={xUserId} 
-                onChange={(e) => setXUserId(Number(e.target.value))}
-                className="bg-transparent border-none py-1 pl-1 pr-6 text-sm font-bold text-white focus:ring-0 cursor-pointer"
-              >
-                <option value={14}>Mock Employee (ID: 14)</option>
-                <option value={15}>Mock Employee (ID: 15)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        {/* State Banner */}
-        {sheet && (
-          <div className="mb-8 flex items-center gap-3">
-            <h2 className="text-2xl font-black text-white">My Goal Sheet (2026 Cycle)</h2>
-            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-              sheet.status === 'Approved' ? '!bg-emerald-500/10 !text-emerald-500 border border-emerald-500/20' :
-              sheet.status === 'Pending_Approval' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
-              sheet.status === 'Rework' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' :
-              'bg-slate-800 text-slate-400 border border-slate-700'
-            }`}>
-              {sheet.status.replace('_', ' ')} {sheet.is_locked ? ' (LOCKED)' : ''}
-            </span>
-          </div>
-        )}
-
-        {!sheet ? (
-          <div className="bg-slate-900/50 backdrop-blur-sm p-12 rounded-xl border border-white/10 text-center shadow-sm">
-            <FileText size={48} className="mx-auto text-slate-300 mb-4" />
-            <h3 className="text-xl font-bold text-slate-200">No Active Goal Sheet</h3>
-            <p className="text-slate-400 mt-2">You do not currently have a goal sheet assigned for this cycle.</p>
-          </div>
-        ) : (
-          isTrackingMode ? renderTrackingLogger() : renderGoalSettingMatrix()
-        )}
-      </main>
+      {/* Content */}
+      {!sheet ? (
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-16 text-center">
+          <FileText size={48} className="mx-auto text-slate-700 mb-4" />
+          <h3 className="text-lg font-bold text-slate-300">No Active Goal Sheet</h3>
+          <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">You do not currently have a goal sheet assigned for this cycle. Contact your manager or HR admin.</p>
+        </motion.div>
+      ) : (
+        isTrackingMode ? renderTrackingLogger() : renderGoalSettingMatrix()
+      )}
     </div>
   );
 };
