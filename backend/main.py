@@ -531,6 +531,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/v1/ping")
+async def ping():
+    return {"status": "healthy", "message": "Keep-alive active"}
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """
