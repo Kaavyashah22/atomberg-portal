@@ -559,7 +559,6 @@ async def get_db():
 async def get_current_user(x_user_id: int = Header(...), db: AsyncSession = Depends(get_db)) -> User:
     result = await db.execute(select(User).where(User.id == x_user_id))
     user = result.scalar_one_or_none()
-    await db.commit() # End implicit transaction to allow db.begin() in route handlers
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid X-User-ID. User not found.")
     return user
@@ -688,6 +687,10 @@ async def submit_goal_sheet(
     Accepts a goal sheet payload. Checks if the sheet is already locked. 
     If valid, saves goals to the DB, updates GoalSheet status to 'Pending_Approval'.
     """
+    cycle_status = get_cycle_status()
+    if not cycle_status["can_edit_goals"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Goal editing is currently closed for this cycle phase.")
+
     async with db.begin():
         # Fetch the goal sheet
         result = await db.execute(select(GoalSheet).where(GoalSheet.id == payload.sheet_id))
@@ -889,7 +892,7 @@ async def manager_review(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal sheet not found.")
             
         # Enforce that locked sheets cannot be edited without admin privileges
-        if sheet.is_locked:
+        if sheet.is_locked and current_user.role != UserRole.Admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, 
                 detail="Goal sheet is already locked. Admin privileges are required to modify it."
@@ -1048,6 +1051,10 @@ async def employee_update_tracking(
     Allows employees to log their actual_achievement, select a status, and record completion_date.
     Only allowed if the parent GoalSheet is locked (is_locked=True).
     """
+    cycle_status = get_cycle_status()
+    if not cycle_status["can_update_tracking"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tracking updates are currently closed for this cycle phase.")
+
     async with db.begin():
         # Verify Goal and GoalSheet
         result = await db.execute(
@@ -1097,6 +1104,10 @@ async def manager_checkin(
     """
     Allows the manager to view targets vs actuals, compute progress score, and save a mandatory manager_comment.
     """
+    cycle_status = get_cycle_status()
+    if not cycle_status["can_update_tracking"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tracking updates are currently closed for this cycle phase.")
+
     async with db.begin():
         # Fetch tracking and goal
         result = await db.execute(

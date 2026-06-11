@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
 import {
-  Plus, Save, AlertTriangle, CheckCircle, Clock,
-  Target, ShieldAlert, FileText, Send, Trash2, Calendar, Info
+  Plus, Save, AlertTriangle, Clock,
+  Target, FileText, Send, Trash2, Info
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -83,7 +83,6 @@ const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } } };
 
 /* ── Helpers ────────────────────────────────────── */
-const fmt = (v) => v != null && v !== '' ? Number(v).toFixed(2) : '—';
 const QUARTER_WINDOWS = {
   Q1: { month: 'July', period: 'Jul–Sep' },
   Q2: { month: 'October', period: 'Oct–Dec' },
@@ -101,14 +100,14 @@ const EmployeeWorkspace = () => {
   const [selectedQuarter, setSelectedQuarter] = useState('Q1');
   const [trackingState, setTrackingState] = useState({});
 
-  const fetchWithAuth = async (url, options = {}) => {
+  const fetchWithAuth = useCallback(async (url, options = {}) => {
     const res = await fetch(url, {
       ...options,
       headers: { 'Content-Type': 'application/json', 'X-User-ID': xUserId.toString(), ...options.headers }
     });
     if (!res.ok) { const err = await res.json().catch(() => null); throw new Error(err?.detail || `Request failed: ${res.status}`); }
     return res.json();
-  };
+  }, [xUserId]);
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -128,9 +127,12 @@ const EmployeeWorkspace = () => {
       setSheet({ id: 101, status: 'Draft', is_locked: false, cycle_year: 2026 });
       setGoals([{ id: Date.now(), thrust_area: 'Operational Excellence', title: 'Reduce Latency', description: 'Optimize queries', uom: 'Numeric_Min', target_value: 50, weightage: 100, deadline: '', is_shared: false }]);
     } finally { setLoading(false); }
-  }, [xUserId]);
+  }, [fetchWithAuth]);
 
-  useEffect(() => { loadWorkspace(); }, [loadWorkspace]);
+  useEffect(() => { 
+    const t = setTimeout(() => { loadWorkspace(); }, 0);
+    return () => clearTimeout(t);
+  }, [loadWorkspace]);
 
   const totalWeightage = goals.reduce((acc, g) => acc + (Number(g.weightage) || 0), 0);
   const isMaxGoalsReached = goals.length >= 8;
@@ -299,7 +301,7 @@ const EmployeeWorkspace = () => {
         </motion.div>
       )}
 
-      {goals.map((g, idx) => {
+      {goals.map((g) => {
         const tState = trackingState[g.id]?.[selectedQuarter] || {};
         const isZeroBased = g.uom === 'Zero_Based';
         const isLogLocked = cycleStatus && !cycleStatus.can_update_tracking;

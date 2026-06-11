@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Zap, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { Zap, RefreshCw, WifiOff } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const TIMEOUT_MS = 180_000; // 3 minutes
@@ -18,6 +18,7 @@ const LOADING_MESSAGES = [
 
 /* ── Context ──────────────────────────────────── */
 const WarmupContext = createContext({ isWarmedUp: false });
+// eslint-disable-next-line react-refresh/only-export-components
 export const useWarmup = () => useContext(WarmupContext);
 
 /* ── Indeterminate Progress Bar ───────────────── */
@@ -160,10 +161,9 @@ export const LoadingProvider = ({ children }) => {
 
   useEffect(() => {
     if (isWarmedUp || timedOut) return;
-    // Immediate attempt + poll every 4s
-    pingBackend();
+    const t = setTimeout(() => { pingBackend(); }, 0);
     const interval = setInterval(pingBackend, 4000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(t); clearInterval(interval); };
   }, [pingBackend, isWarmedUp, timedOut, attemptKey]);
 
   const handleRetry = () => {

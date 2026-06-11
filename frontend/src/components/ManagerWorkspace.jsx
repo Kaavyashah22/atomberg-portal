@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
 import {
   Users, CheckCircle, FileText, AlertTriangle, ChevronRight,
-  Target, BarChart2, MessageSquare, Save, UserCheck, ShieldCheck, ArrowLeft,
-  Activity, Calendar, Clock, Info
+  MessageSquare, Save, UserCheck, ShieldCheck, ArrowLeft,
+  Activity, Clock
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -35,7 +35,7 @@ const SkeletonLoader = () => (
 );
 
 /* ── KPI Card ───────────────────────────────────── */
-const KPICard = ({ title, value, icon: Icon, color, delay = 0 }) => {
+const KPICard = ({ title, value, icon: Icon, color }) => {
   const gradients = {
     blue: 'from-blue-600 to-blue-700 shadow-blue-500/20',
     orange: 'from-atomberg-600 to-atomberg-700 shadow-atomberg-500/20',
@@ -86,20 +86,24 @@ const ManagerWorkspace = () => {
   const [selectedQuarter, setSelectedQuarter] = useState('Q1');
   const [cycleStatus, setCycleStatus] = useState(null);
 
-  const fetchWithAuth = async (url, options = {}) => {
+  const fetchWithAuth = useCallback(async (url, options = {}) => {
     const res = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', 'X-User-ID': String(xUserId), ...options.headers } });
     if (!res.ok) { const err = await res.json().catch(() => null); throw new Error(err?.detail || `Request failed: ${res.status}`); }
     return res.json();
-  };
+  }, [xUserId]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true); setError(null);
     try { const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/manager/team`); setTeamMembers(data || []); }
     catch (err) { setError("Failed to load team data: " + err.message); }
     finally { setLoading(false); }
-  }, [xUserId]);
+  }, [fetchWithAuth]);
 
-  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+  useEffect(() => {
+    // delay the synchronous state update to avoid cascading renders warning
+    const t = setTimeout(() => { loadDashboard(); }, 0);
+    return () => clearTimeout(t);
+  }, [loadDashboard]);
 
   const handleSelectEmployee = async (emp) => {
     if (emp.status === 'Draft' || emp.status === 'Rework') { toast('This sheet is currently with the employee.', { icon: '📝' }); return; }

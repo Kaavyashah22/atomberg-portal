@@ -1,13 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'motion/react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import toast from 'react-hot-toast';
 import { 
   LayoutDashboard, BarChart2, ShieldAlert, RefreshCw, 
   Unlock, Users, FileText, CheckCircle, Activity, UserCheck, Ghost, Target
 } from 'lucide-react';
-
-const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } } };
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -46,7 +42,7 @@ const AdminDashboard = () => {
     else toast.success(message);
   };
 
-  const fetchWithAuth = async (url, options = {}) => {
+  const fetchWithAuth = useCallback(async (url, options = {}) => {
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -60,7 +56,7 @@ const AdminDashboard = () => {
       throw new Error(errData?.detail || `API Request Failed: ${response.status}`);
     }
     return response.json();
-  };
+  }, [xUserId]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -85,7 +81,7 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, quarter, xUserId]);
+  }, [activeTab, quarter, fetchWithAuth]);
 
   const handlePushSharedGoal = async () => {
     if (!sharedGoal.title) return;
@@ -122,7 +118,8 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
-    loadData();
+    const t = setTimeout(() => { loadData(); }, 0);
+    return () => clearTimeout(t);
   }, [loadData]);
 
   const handleTriggerEscalation = async () => {
@@ -479,7 +476,7 @@ const AdminDashboard = () => {
               </thead>
               <tbody className="text-sm">
                 {auditLogs.map((log) => (
-                  <React.Fragment key={log.id}>
+                  <Fragment key={log.id}>
                     <tr className="border-b border-white/10/50 hover:bg-slate-800/30 even:bg-slate-800/10 transition-colors">
                       <td className="px-6 py-4 text-slate-500 font-medium whitespace-nowrap">
                         {log.timestamp ? (new Date(log.timestamp).toString() !== 'Invalid Date' ? new Date(log.timestamp).toLocaleDateString() : 'N/A') : 'N/A'}
@@ -525,7 +522,7 @@ const AdminDashboard = () => {
                         </td>
                       </tr>
                     )}
-                  </React.Fragment>
+                  </Fragment>
                 ))}
                 {auditLogs.length === 0 && (
                   <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-400 italic">No governance audit logs available.</td></tr>
