@@ -21,8 +21,6 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 # ==========================================
 # In production, this would be loaded from environment variables
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost/atomberg_goals")
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(
     bind=engine, 
@@ -561,6 +559,7 @@ async def get_db():
 async def get_current_user(x_user_id: int = Header(...), db: AsyncSession = Depends(get_db)) -> User:
     result = await db.execute(select(User).where(User.id == x_user_id))
     user = result.scalar_one_or_none()
+    await db.commit()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid X-User-ID. User not found.")
     return user

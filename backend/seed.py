@@ -14,8 +14,6 @@ from main import (
 
 # Pull the URL from the terminal
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost/atomberg_goals")
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
 # DIAGNOSTIC: This will tell us if it's hitting the Cloud or Local
 if "neon.tech" in DATABASE_URL:
