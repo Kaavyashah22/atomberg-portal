@@ -581,6 +581,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_event():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
 @app.get("/api/v1/ping")
 async def ping():
     return {"status": "healthy", "message": "Keep-alive active"}
