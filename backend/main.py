@@ -61,6 +61,15 @@ class TrackingStatus(str, enum.Enum):
     On_Track = "On Track"
     Completed = "Completed"
 
+class FeedbackStatus(str, enum.Enum):
+    Requested = "Requested"
+    Completed = "Completed"
+
+class IDPStatus(str, enum.Enum):
+    Planned = "Planned"
+    In_Progress = "In_Progress"
+    Completed = "Completed"
+
 class NotificationType(str, enum.Enum):
     GOAL_SUBMITTED = "GOAL_SUBMITTED"
     GOAL_APPROVED = "GOAL_APPROVED"
@@ -149,7 +158,28 @@ class AuditLog(Base):
     action = Column(String, nullable=False)
     old_values = Column(JSONB, nullable=True)
     new_values = Column(JSONB, nullable=True)
-    timestamp = Column(DateTime(timezone=True), default=func.now())
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class PeerFeedback(Base):
+    __tablename__ = "peer_feedback"
+    id = Column(Integer, primary_key=True, index=True)
+    requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(String, nullable=True)
+    status = Column(SQLEnum(FeedbackStatus), default=FeedbackStatus.Requested, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class DevelopmentPlan(Base):
+    __tablename__ = "development_plans"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    skill_name = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    status = Column(SQLEnum(IDPStatus), default=IDPStatus.Planned, nullable=False)
+    budget_allocated = Column(Float, default=0.0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 class EscalationRule(Base):
     __tablename__ = "escalation_rules"
@@ -258,6 +288,26 @@ class AzureADTokenPayload(BaseModel):
 
 class RemindQuarterRequest(BaseModel):
     quarter: Quarter
+
+class SmartGoalRequest(BaseModel):
+    thrust_area: str
+    rough_goal: str
+
+class FeedbackRequestPayload(BaseModel):
+    reviewer_id: int
+    
+class FeedbackSubmitPayload(BaseModel):
+    feedback_id: int
+    content: str
+
+class IDPCreateRequest(BaseModel):
+    skill_name: str
+    description: str
+
+class IDPUpdateRequest(BaseModel):
+    idp_id: int
+    status: IDPStatus
+    budget_allocated: Optional[float] = None
 
 # ==========================================
 # Notification Dispatcher Service
@@ -1697,3 +1747,140 @@ async def get_manager_effectiveness(
     leaderboard.sort(key=lambda x: x["compliance_rate"], reverse=True)
         
     return leaderboard
+
+# ==========================================
+# Phase 2 Enterprise Suite Endpoints
+# ==========================================
+
+import asyncio
+
+@app.post("/api/v1/ai/smart-goal")
+async def generate_smart_goal(
+    payload: SmartGoalRequest,
+    current_user: User = Depends(verify_role(["Employee", "Manager", "Admin"]))
+):
+    """
+    High-speed LLM integration architecture (mocked for now).
+    Accepts a rough goal and thrust area, returns a SMART formatted version.
+    """
+    # Simulate high-speed LLM inference delay (e.g. Groq LPU speed)
+    await asyncio.sleep(0.5)
+    
+    improved_title = f"{payload.thrust_area} Optimization: {payload.rough_goal.title()}"
+    improved_description = (
+        f"Specific: Improve {payload.rough_goal} within the {payload.thrust_area} area.\n"
+        "Measurable: Achieve a 20% improvement or target KPI by end of cycle.\n"
+        "Achievable: Utilize available resources and training to hit milestones.\n"
+        "Relevant: Aligns perfectly with the departmental and company OKRs.\n"
+        "Time-bound: Complete by Q4 2026."
+    )
+    
+    return {
+        "status": "success",
+        "smart_goal": {
+            "title": improved_title,
+            "description": improved_description
+        }
+    }
+
+@app.post("/api/v1/feedback/request")
+async def request_feedback(
+    payload: FeedbackRequestPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_role(["Employee", "Manager"]))
+):
+    async with db.begin():
+        feedback = PeerFeedback(
+            requester_id=current_user.id,
+            reviewer_id=payload.reviewer_id,
+            status=FeedbackStatus.Requested
+        )
+        db.add(feedback)
+    return {"message": "Feedback requested successfully"}
+
+@app.post("/api/v1/feedback/submit")
+async def submit_feedback(
+    payload: FeedbackSubmitPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_role(["Employee", "Manager"]))
+):
+    async with db.begin():
+        res = await db.execute(
+            select(PeerFeedback).where(
+                PeerFeedback.id == payload.feedback_id, 
+                PeerFeedback.reviewer_id == current_user.id
+            )
+        )
+        feedback = res.scalar_one_or_none()
+        if not feedback:
+            raise HTTPException(status_code=404, detail="Feedback request not found or not assigned to you")
+            
+        feedback.content = payload.content
+        feedback.status = FeedbackStatus.Completed
+    return {"message": "Feedback submitted successfully"}
+
+@app.get("/api/v1/feedback/me")
+async def get_my_feedback(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_role(["Employee", "Manager"]))
+):
+    async with db.begin():
+        # Feedback requested BY me
+        req_res = await db.execute(select(PeerFeedback).where(PeerFeedback.requester_id == current_user.id))
+        requests = req_res.scalars().all()
+        
+        # Feedback assigned TO me
+        rev_res = await db.execute(select(PeerFeedback).where(PeerFeedback.reviewer_id == current_user.id))
+        reviews = rev_res.scalars().all()
+        
+    return {
+        "requested_by_me": [{"id": f.id, "reviewer_id": f.reviewer_id, "status": f.status, "content": f.content} for f in requests],
+        "assigned_to_me": [{"id": f.id, "requester_id": f.requester_id, "status": f.status, "content": f.content} for f in reviews]
+    }
+
+@app.post("/api/v1/idp")
+async def create_idp(
+    payload: IDPCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_role(["Employee", "Manager"]))
+):
+    async with db.begin():
+        plan = DevelopmentPlan(
+            user_id=current_user.id,
+            skill_name=payload.skill_name,
+            description=payload.description,
+            status=IDPStatus.Planned
+        )
+        db.add(plan)
+    return {"message": "IDP created successfully"}
+
+@app.get("/api/v1/idp/me")
+async def get_my_idps(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_role(["Employee", "Manager"]))
+):
+    async with db.begin():
+        res = await db.execute(select(DevelopmentPlan).where(DevelopmentPlan.user_id == current_user.id))
+        plans = res.scalars().all()
+    return {
+        "idps": [{"id": p.id, "skill_name": p.skill_name, "description": p.description, "status": p.status, "budget": p.budget_allocated} for p in plans]
+    }
+
+@app.put("/api/v1/idp/update")
+async def update_idp(
+    payload: IDPUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(verify_role(["Employee", "Manager", "Admin"]))
+):
+    async with db.begin():
+        res = await db.execute(select(DevelopmentPlan).where(DevelopmentPlan.id == payload.idp_id))
+        plan = res.scalar_one_or_none()
+        if not plan:
+            raise HTTPException(status_code=404, detail="IDP not found")
+        
+        # Only admins or managers can update budget, users can update status
+        plan.status = payload.status
+        if payload.budget_allocated is not None and current_user.role in [UserRole.Manager, UserRole.Admin]:
+            plan.budget_allocated = payload.budget_allocated
+            
+    return {"message": "IDP updated successfully"}

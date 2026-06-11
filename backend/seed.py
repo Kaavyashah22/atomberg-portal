@@ -9,7 +9,8 @@ from sqlalchemy import select
 # Import application components from main.py
 from main import (
     Base, User, GoalSheet, Goal, QuarterlyTracking, 
-    UserRole, GoalSheetStatus, UOM, Quarter, TrackingStatus
+    UserRole, GoalSheetStatus, UOM, Quarter, TrackingStatus,
+    PeerFeedback, DevelopmentPlan
 )
 
 # Pull the URL from the terminal

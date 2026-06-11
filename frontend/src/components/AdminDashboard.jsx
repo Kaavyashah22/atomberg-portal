@@ -4,6 +4,12 @@ import {
   LayoutDashboard, BarChart2, ShieldAlert, RefreshCw, 
   Unlock, Users, FileText, CheckCircle, Activity, UserCheck, Ghost, Target
 } from 'lucide-react';
+import { 
+  PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid
+} from 'recharts';
+
+const COLORS = ['#6366f1', '#3b82f6', '#14b8a6', '#f59e0b', '#ec4899', '#8b5cf6'];
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -280,68 +286,94 @@ const AdminDashboard = () => {
 
   const renderTabB = () => {
     if (loading) return <SkeletonLoader />;
+    
+    // Transform UOM data for BarChart
+    const uomDataMap = {};
+    if (goalDistribution?.by_uom_and_status) {
+      goalDistribution.by_uom_and_status.forEach(item => {
+        if (!uomDataMap[item.uom]) {
+          uomDataMap[item.uom] = { name: item.uom.replace('_', ' '), Completed: 0, "On Track": 0, "Not Started": 0 };
+        }
+        uomDataMap[item.uom][item.status] = item.count;
+      });
+    }
+    const uomChartData = Object.values(uomDataMap);
+
     return (
       <div className="space-y-6 animate-fade-in">
         {goalDistribution && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Thrust Area Breakdown */}
-            <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10 bg-transparent">
+            {/* Thrust Area Breakdown (Pie Chart) */}
+            <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden h-[450px] flex flex-col">
+              <div className="px-6 py-4 border-b border-white/10 bg-transparent shrink-0">
                 <h3 className="text-lg font-semibold leading-relaxed text-white flex items-center">
                   <Activity className="mr-2 text-indigo-500" size={20} /> Thrust Area Breakdown
                 </h3>
               </div>
-              <div className="p-6">
-                <div className="space-y-5">
-                  {goalDistribution.by_thrust_area?.map((item, idx) => {
-                    // Calculate relative percentage for visualization
-                    const maxCount = Math.max(...goalDistribution.by_thrust_area.map(x => x.count), 1);
-                    const widthPercent = (item.count / maxCount) * 100;
-                    
-                    return (
-                      <div key={idx} className="flex flex-col">
-                        <div className="flex justify-between text-sm mb-1.5">
-                          <span className="font-semibold text-slate-200">{item.thrust_area}</span>
-                          <span className="text-slate-400 font-medium bg-slate-800/30 px-2 py-0.5 rounded-full">{item.count} Goals</span>
-                        </div>
-                        <div className="w-full bg-slate-800/30 rounded-full h-2.5 overflow-hidden">
-                          <div className="bg-gradient-to-r from-indigo-500 to-blue-500 h-2.5 rounded-full transition-all duration-1000" style={{ width: `${widthPercent}%` }}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {(!goalDistribution.by_thrust_area || goalDistribution.by_thrust_area.length === 0) && (
-                    <p className="text-center text-slate-400 py-8 italic">No thrust area distribution data available.</p>
-                  )}
-                </div>
+              <div className="p-6 flex-1 min-h-0">
+                {goalDistribution.by_thrust_area?.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={goalDistribution.by_thrust_area.map(d => ({ name: d.thrust_area, value: d.count }))}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {goalDistribution.by_thrust_area.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
+                        itemStyle={{ color: '#fff' }}
+                      />
+                      <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px', color: '#cbd5e1' }}/>
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-slate-400 italic">No thrust area distribution data available.</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* UoM Tracking State */}
-            <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/10 bg-transparent">
+            {/* UoM Tracking State (Stacked Bar Chart) */}
+            <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-white/10 overflow-hidden h-[450px] flex flex-col">
+              <div className="px-6 py-4 border-b border-white/10 bg-transparent shrink-0">
                 <h3 className="text-lg font-semibold leading-relaxed text-white flex items-center">
                   <BarChart2 className="mr-2 text-indigo-500" size={20} /> UoM Tracking State
                 </h3>
               </div>
-              <div className="p-6">
-                <div className="grid grid-cols-2 gap-4">
-                  {goalDistribution.by_uom_and_status?.map((item, idx) => {
-                    const statusColor = item.status === 'Completed' ? 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-emerald-100' :
-                                      item.status === 'On Track' ? 'bg-blue-50 text-blue-800 border-blue-200 shadow-blue-100' :
-                                      'bg-slate-800/20 text-white border-white/10 shadow-none';
-                    return (
-                      <div key={idx} className={`p-5 rounded-xl border shadow-sm ${statusColor} flex flex-col items-center justify-center text-center transition-transform hover:-translate-y-1 duration-300`}>
-                        <span className="text-3xl font-black mb-1">{item.count}</span>
-                        <span className="text-xs font-bold uppercase tracking-widest mt-1 opacity-70">{item.uom.replace('_', ' ')}</span>
-                        <span className="text-sm font-semibold mt-2">{item.status.replace('_', ' ')}</span>
-                      </div>
-                    )
-                  })}
-                  {(!goalDistribution.by_uom_and_status || goalDistribution.by_uom_and_status.length === 0) && (
-                    <p className="col-span-2 text-center text-slate-400 py-8 italic">No active unit of measure tracking data available.</p>
-                  )}
-                </div>
+              <div className="p-6 flex-1 min-h-0">
+                {uomChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={uomChartData}
+                      margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                      <XAxis dataKey="name" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                      <YAxis stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }}
+                        cursor={{ fill: '#334155', opacity: 0.4 }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '12px', color: '#cbd5e1' }} />
+                      <Bar dataKey="Completed" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
+                      <Bar dataKey="On Track" stackId="a" fill="#3b82f6" />
+                      <Bar dataKey="Not Started" stackId="a" fill="#64748b" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-slate-400 italic">No tracking data available.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

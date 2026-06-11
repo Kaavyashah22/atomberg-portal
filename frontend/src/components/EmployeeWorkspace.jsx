@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
 import {
   Plus, Save, AlertTriangle, Clock,
-  Target, FileText, Send, Trash2, Info
+  Target, FileText, Send, Trash2, Info, Wand2, MessageSquare, BookOpen, User, Star
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -99,6 +99,10 @@ const EmployeeWorkspace = () => {
   const [validationError, setValidationError] = useState('');
   const [selectedQuarter, setSelectedQuarter] = useState('Q1');
   const [trackingState, setTrackingState] = useState({});
+  const [activeTab, setActiveTab] = useState('goals');
+  const [feedbackData, setFeedbackData] = useState({ requested_by_me: [], assigned_to_me: [] });
+  const [idpData, setIdpData] = useState([]);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   const fetchWithAuth = useCallback(async (url, options = {}) => {
     const res = await fetch(url, {
@@ -129,10 +133,28 @@ const EmployeeWorkspace = () => {
     } finally { setLoading(false); }
   }, [fetchWithAuth]);
 
+  const loadFeedback = useCallback(async () => {
+    try {
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/feedback/me`);
+      setFeedbackData(data);
+    } catch (err) { toast.error('Failed to load feedback'); }
+  }, [fetchWithAuth]);
+
+  const loadIDP = useCallback(async () => {
+    try {
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/idp/me`);
+      setIdpData(data.idps || []);
+    } catch (err) { toast.error('Failed to load IDPs'); }
+  }, [fetchWithAuth]);
+
   useEffect(() => { 
-    const t = setTimeout(() => { loadWorkspace(); }, 0);
+    const t = setTimeout(() => { 
+      loadWorkspace();
+      loadFeedback();
+      loadIDP();
+    }, 0);
     return () => clearTimeout(t);
-  }, [loadWorkspace]);
+  }, [loadWorkspace, loadFeedback, loadIDP]);
 
   const totalWeightage = goals.reduce((acc, g) => acc + (Number(g.weightage) || 0), 0);
   const isMaxGoalsReached = goals.length >= 8;
@@ -142,6 +164,27 @@ const EmployeeWorkspace = () => {
   const handleAddGoal = () => { if (isMaxGoalsReached) return; setGoals([...goals, { id: Date.now(), thrust_area: '', title: '', description: '', uom: 'Numeric_Max', target_value: 0, weightage: 0, deadline: '', is_shared: false }]); };
   const handleGoalChange = (index, field, value) => { const n = [...goals]; n[index][field] = value; setGoals(n); };
   const handleDeleteGoal = (index) => { setGoals(goals.filter((_, i) => i !== index)); };
+
+  const handleAIMagicWand = async (index) => {
+    const goal = goals[index];
+    if (!goal.thrust_area || !goal.title) {
+      toast.error('Please enter a thrust area and goal title first.');
+      return;
+    }
+    setIsAiLoading(true);
+    try {
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/v1/ai/smart-goal`, {
+        method: 'POST',
+        body: JSON.stringify({ thrust_area: goal.thrust_area, rough_goal: goal.title })
+      });
+      const n = [...goals];
+      n[index].title = data.smart_goal.title;
+      n[index].description = data.smart_goal.description;
+      setGoals(n);
+      toast.success('AI successfully rewrote your goal!');
+    } catch (err) { toast.error('AI generation failed.'); }
+    setIsAiLoading(false);
+  };
 
   const handleSubmitSheet = async () => {
     if (goals.length === 0) { setValidationError("A goal sheet cannot be submitted empty."); return; }
@@ -244,7 +287,18 @@ const EmployeeWorkspace = () => {
               {goals.map((g, idx) => (
                 <motion.tr key={g.id} variants={fadeUp} className="group hover:bg-white/[0.02] transition-colors">
                   <td className="px-4 py-3">{isReadOnly && !g.thrust_area ? <span className="text-sm italic text-slate-500">General</span> : <input type="text" value={g.thrust_area} onChange={(e) => handleGoalChange(idx, 'thrust_area', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" placeholder="e.g. Revenue" />}</td>
-                  <td className="px-4 py-3"><input type="text" value={g.title} onChange={(e) => handleGoalChange(idx, 'title', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm" placeholder="Goal title" /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <input type="text" value={g.title} onChange={(e) => handleGoalChange(idx, 'title', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm flex-1" placeholder="Goal title" />
+                      {!isReadOnly && !g.is_shared && (
+                        <Tooltip text="AI SMART Rewrite">
+                          <button onClick={() => handleAIMagicWand(idx)} disabled={isAiLoading} className="p-1.5 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/20 rounded border border-indigo-500/30 transition-colors disabled:opacity-50">
+                            <Wand2 size={14} className={isAiLoading ? "animate-spin" : ""} />
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <select value={g.uom} onChange={(e) => handleGoalChange(idx, 'uom', e.target.value)} disabled={g.is_shared || isReadOnly} className="w-full text-sm">
                       <option value="Numeric_Max">Numeric Max</option><option value="Numeric_Min">Numeric Min</option><option value="Timeline">Timeline</option><option value="Zero_Based">Zero Based</option>
@@ -352,6 +406,123 @@ const EmployeeWorkspace = () => {
     </motion.div>
   );
 
+  const renderFeedbackTab = () => (
+    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+      <div className="flex gap-4">
+        <div className="flex-1 glass-card p-6">
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center"><MessageSquare className="mr-2 text-blue-400" size={20} /> Request Feedback</h3>
+          <p className="text-sm text-slate-400 mb-4">Request 360° feedback from a peer or manager to support your continuous growth.</p>
+          <div className="flex gap-3">
+             <input type="number" placeholder="Reviewer ID (e.g. 15)" id="reviewerIdInput" className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 w-48" />
+             <button onClick={async () => {
+               const rid = document.getElementById('reviewerIdInput').value;
+               if (!rid) return;
+               try {
+                 await fetchWithAuth(`${API_BASE_URL}/api/v1/feedback/request`, { method: 'POST', body: JSON.stringify({ reviewer_id: Number(rid) }) });
+                 toast.success('Feedback requested');
+                 loadFeedback();
+               } catch(e) { toast.error(e.message); }
+             }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold">Send Request</button>
+          </div>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="glass-card p-6">
+          <h4 className="font-bold text-slate-200 mb-4">Requested By Me</h4>
+          <ul className="space-y-3 max-h-64 overflow-y-auto pr-2">
+             {feedbackData.requested_by_me.map(f => (
+               <li key={f.id} className="p-3 rounded-lg bg-slate-800/50 border border-white/5 text-sm">
+                 <div className="flex justify-between mb-2">
+                   <span className="text-slate-300 font-semibold">To User ID: {f.reviewer_id}</span>
+                   <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${f.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-700 text-slate-300'}`}>{f.status}</span>
+                 </div>
+                 {f.status === 'Completed' ? <p className="text-slate-400 italic">"{f.content}"</p> : <p className="text-slate-500 text-xs">Waiting for response...</p>}
+               </li>
+             ))}
+             {feedbackData.requested_by_me.length === 0 && <p className="text-sm text-slate-500 italic">No feedback requested yet.</p>}
+          </ul>
+        </div>
+        <div className="glass-card p-6 border-indigo-500/20">
+          <h4 className="font-bold text-slate-200 mb-4">Assigned To Me</h4>
+          <ul className="space-y-3 max-h-64 overflow-y-auto pr-2">
+             {feedbackData.assigned_to_me.map(f => (
+               <li key={f.id} className="p-3 rounded-lg bg-indigo-900/10 border border-indigo-500/20 text-sm">
+                 <div className="flex justify-between mb-2">
+                   <span className="text-indigo-300 font-semibold">From User ID: {f.requester_id}</span>
+                   <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400">{f.status}</span>
+                 </div>
+                 {f.status === 'Completed' ? <p className="text-slate-400 italic">"{f.content}"</p> : (
+                   <div className="mt-2">
+                     <textarea id={`fb-${f.id}`} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white mb-2" placeholder="Write your feedback..."></textarea>
+                     <button onClick={async () => {
+                       const val = document.getElementById(`fb-${f.id}`).value;
+                       if (!val) return;
+                       try {
+                         await fetchWithAuth(`${API_BASE_URL}/api/v1/feedback/submit`, { method: 'POST', body: JSON.stringify({ feedback_id: f.id, content: val }) });
+                         toast.success('Submitted');
+                         loadFeedback();
+                       } catch(e) { toast.error(e.message); }
+                     }} className="bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-xs font-bold">Submit</button>
+                   </div>
+                 )}
+               </li>
+             ))}
+             {feedbackData.assigned_to_me.length === 0 && <p className="text-sm text-slate-500 italic">No pending requests.</p>}
+          </ul>
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  const renderIDPTab = () => (
+    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-bold text-white mb-4 flex items-center"><BookOpen className="mr-2 text-emerald-400" size={20} /> Create Development Plan</h3>
+        <div className="flex flex-col sm:flex-row gap-3">
+           <input type="text" id="idpSkill" placeholder="Skill or Course Name" className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+           <input type="text" id="idpDesc" placeholder="Description/Goal" className="flex-[2] bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
+           <button onClick={async () => {
+             const skill = document.getElementById('idpSkill').value;
+             const desc = document.getElementById('idpDesc').value;
+             if (!skill || !desc) return;
+             try {
+               await fetchWithAuth(`${API_BASE_URL}/api/v1/idp`, { method: 'POST', body: JSON.stringify({ skill_name: skill, description: desc }) });
+               toast.success('IDP added');
+               document.getElementById('idpSkill').value = '';
+               document.getElementById('idpDesc').value = '';
+               loadIDP();
+             } catch(e) { toast.error(e.message); }
+           }} className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap">Add IDP</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {idpData.map(p => (
+          <div key={p.id} className="glass-card p-5 border-t-4 border-t-emerald-500 flex flex-col h-full">
+            <h4 className="font-bold text-slate-200">{p.skill_name}</h4>
+            <p className="text-sm text-slate-400 mt-1 mb-4 flex-1">{p.description}</p>
+            <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5">
+              <select value={p.status} onChange={async (e) => {
+                try {
+                  await fetchWithAuth(`${API_BASE_URL}/api/v1/idp/update`, { method: 'PUT', body: JSON.stringify({ idp_id: p.id, status: e.target.value }) });
+                  toast.success('Status updated');
+                  loadIDP();
+                } catch(err) { toast.error(err.message); }
+              }} className="bg-slate-800 border border-slate-700 text-xs font-semibold rounded px-2 py-1 text-slate-300">
+                <option value="Planned">Planned</option>
+                <option value="In_Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+              {p.budget > 0 && <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">${p.budget}</span>}
+            </div>
+          </div>
+        ))}
+        {idpData.length === 0 && <div className="col-span-full text-center py-10 text-slate-500 italic glass-card border-dashed">No development plans created yet.</div>}
+      </div>
+    </motion.div>
+  );
+
   if (loading) return <SkeletonLoader />;
 
   return (
@@ -391,6 +562,17 @@ const EmployeeWorkspace = () => {
         </motion.div>
       )}
 
+      {/* Tabs Navigation */}
+      {sheet && (
+        <div className="flex items-center gap-2 mb-6 border-b border-slate-700/50 pb-2">
+          {['goals', 'feedback', 'idp'].map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-t-lg font-semibold text-sm transition-colors ${activeTab === tab ? 'text-indigo-400 border-b-2 border-indigo-500 bg-indigo-500/10' : 'text-slate-400 hover:text-slate-300 hover:bg-slate-800/50'}`}>
+              {tab === 'goals' ? 'Goal Sheet' : tab === 'feedback' ? '360° Feedback' : 'Development Plan (IDP)'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Content */}
       {!sheet ? (
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-16 text-center">
@@ -398,6 +580,10 @@ const EmployeeWorkspace = () => {
           <h3 className="text-lg font-bold text-slate-300">No Active Goal Sheet</h3>
           <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">You do not currently have a goal sheet assigned for this cycle. Contact your manager or HR admin.</p>
         </motion.div>
+      ) : activeTab === 'feedback' ? (
+        renderFeedbackTab()
+      ) : activeTab === 'idp' ? (
+        renderIDPTab()
       ) : (
         isTrackingMode ? renderTrackingLogger() : renderGoalSettingMatrix()
       )}
