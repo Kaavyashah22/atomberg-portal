@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 # ==========================================
 # In production, this would be loaded from environment variables
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://localhost/atomberg_goals")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = sessionmaker(
     bind=engine, 
